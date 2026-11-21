@@ -10,6 +10,7 @@ import com.arindam.camerax.domain.model.ExposurePriority
 import com.arindam.camerax.domain.model.FlashMode
 import com.arindam.camerax.domain.model.LowLightBoost
 import com.arindam.camerax.domain.model.NightScene
+import com.arindam.camerax.domain.model.PipCorner
 import com.arindam.camerax.domain.model.RecordingEvent
 import com.arindam.camerax.domain.model.ZoomInfo
 import com.arindam.camerax.domain.repository.CameraRepository
@@ -33,6 +34,7 @@ class FakeCameraRepository : CameraRepository {
     var lastFlash: FlashMode? = null
     var lastBindConfig: CameraBindConfig? = null
     var captureResult: Result<File> = Result.failure(IllegalStateException("No capture"))
+    var lastDualPhotoLens: CameraLens? = null
     var recordingResult: Result<File> = Result.failure(IllegalStateException("No recording"))
     var lastRecordingMuted: Boolean? = null
     var lastRecordingPersistent: Boolean? = null
@@ -61,6 +63,14 @@ class FakeCameraRepository : CameraRepository {
         motionPhoto: Boolean
     ): Result<File> = captureResult
 
+    override suspend fun captureDualPhoto(
+        outputDirectory: File,
+        lens: CameraLens
+    ): Result<File> {
+        lastDualPhotoLens = lens
+        return captureResult
+    }
+
     override fun startRecording(
         outputDirectory: File,
         muted: Boolean,
@@ -82,6 +92,18 @@ class FakeCameraRepository : CameraRepository {
     }
     override fun setFlash(mode: FlashMode) {
         lastFlash = mode
+    }
+    var lastPipCorner: PipCorner? = null
+    override fun setPipCorner(corner: PipCorner) {
+        lastPipCorner = corner
+    }
+    var lastPipScale: Float? = null
+    override fun setPipScale(scale: Float) {
+        lastPipScale = scale
+    }
+    var lastMotionRolling: Boolean? = null
+    override fun setMotionRolling(enabled: Boolean) {
+        lastMotionRolling = enabled
     }
     override fun setLowLightBoost(enabled: Boolean) = Unit
     override fun setZoomRatio(ratio: Float): ZoomInfo? = ZoomInfo(ratio, 1f, 10f)

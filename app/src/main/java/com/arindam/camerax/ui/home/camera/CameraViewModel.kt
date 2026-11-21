@@ -15,6 +15,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arindam.camerax.R
+import com.arindam.camerax.data.camera.AppleLivePhotoWriter
 import com.arindam.camerax.data.camera.MotionPhotoMuxer
 import com.arindam.camerax.data.camera.PreviewViewHost
 import com.arindam.camerax.di.AppDispatchers
@@ -35,6 +36,7 @@ import com.arindam.camerax.domain.model.FlashMode
 import com.arindam.camerax.domain.model.LowLightBoost
 import com.arindam.camerax.domain.model.NightScene
 import com.arindam.camerax.domain.model.PhysicalZoom
+import com.arindam.camerax.domain.model.PipCorner
 import com.arindam.camerax.domain.model.profile
 import com.arindam.camerax.domain.model.RecordingEvent
 import com.arindam.camerax.domain.model.StillFormat
@@ -99,10 +101,6 @@ class CameraViewModel(
     private var flipWhileRecordingEnabled = false
     private var recordMutedByDefault = false
     private var dualDisabled = false
-    private val panoramaFrames = mutableListOf<File>()
-    private var lastPanoramaYaw: Float? = null
-    private var panoramaCaptureBusy = false
-    private var modeBeforeTools: CameraMode = CameraMode.PHOTO
     private val shutterSound: MediaActionSound by lazy {
         MediaActionSound().apply {
             load(MediaActionSound.SHUTTER_CLICK)
@@ -117,26 +115,20 @@ class CameraViewModel(
         persistChrome()
         viewModelScope.launch(dispatchers.io) {
             setOutputDirectory(interactors.picturesDirectory())
-            // Clean stale panorama temp frames from previous sessions (process death).
-            outputDirectory?.let { dir ->
-                val panoTemp = File(dir, PANO_TEMP_DIR)
-                if (panoTemp.exists()) panoTemp.deleteRecursively()
-            }
         }
         viewModelScope.launch {
             val features = withContext(dispatchers.default) {
                 interactors.probeDeviceFeatures()
             }
             _uiState.update { state ->
-                val dualSupported = features.concurrent && !dualDisabled
                 val resolvedMode = CameraModeCatalog.resolve(
                     mode = state.mode,
-                    slowMotionSupported = features.slowMotion.available,
-                    concurrentSupported = dualSupported
+                    dualPhotoSupported = features.dualPhotoSupported
                 )
                 state.copy(
                     slowMotionSupported = features.slowMotion.available,
-                    concurrentSupported = dualSupported,
+                    concurrentSupported = features.concurrent,
+                    dualPhotoSupported = features.dualPhotoSupported,
                     videoFps60Supported = features.videoFps60,
                     mode = resolvedMode,
                     deviceFeatures = features
@@ -160,26 +152,18 @@ class CameraViewModel(
             .shareIn(viewModelScope, ShareWhileSubscribed, replay = 0)
             .onEach { event -> handleRecordEvent(event) }
             .launchIn(viewModelScope)
-        interactors.observeEffectFrame()
-            .mapLatest { bitmap ->
-                withContext(dispatchers.default) {
-                    bitmap?.asImageBitmap()
-                }
-            }
-            .onEach { imageBitmap ->
-                _uiState.update { it.copy(effectFrame = imageBitmap) }
-            }
-            .launchIn(viewModelScope)
     }
 
     fun setOutputDirectory(directory: File) {
         outputDirectory = directory
+        updateMotionRolling()
         viewModelScope.launch { refreshThumbnail() }
     }
 
     fun syncHost() {
         setOutputDirectory(interactors.picturesDirectory())
         applyCaptureSettings(interactors.loadCaptureSettings())
+        updateMotionRolling()
     }
 
     fun updateMicrophonePermission(granted: Boolean) {
@@ -206,7 +190,6 @@ class CameraViewModel(
     ) {
         viewModelScope.launch {
             bindMutex.withLock {
-                if (_uiState.value.showsTools) return@withLock
                 try {
                     val state = _uiState.value
                     val profile = state.mode.profile()
@@ -220,17 +203,12 @@ class CameraViewModel(
                             } else {
                                 CameraExtension.NONE
                             },
-                            effect = if (profile.showsEffects) {
-                                state.effect
-                            } else {
-                                EffectMode.NONE
-                            },
-                            liveEffects = profile.showsEffects,
+                            effect = EffectMode.NONE,
                             cameraId = state.cameraId,
                             captureAspect = state.captureAspect,
                             videoQuality = state.videoQuality,
                             videoHdrRange = state.videoHdrRange,
-                            slowMotion = profile.bindSlowMotion,
+                            slowMotion = false,
                             slowMotionQuality = state.slowMotionQuality,
                             slowMotionRate = state.slowMotionRate,
                             videoStabilization = state.videoStabilization,
@@ -242,20 +220,18 @@ class CameraViewModel(
                                 state.isRecording &&
                                 !state.motionCapturing &&
                                 profile.allowsPersistentRecording,
-                            concurrent = profile.bindConcurrent,
+                            concurrent = false,
+                            dualPhoto = profile.bindDualPhoto,
                             videoFps60 = state.videoFps60 && profile.allowsFps60,
                             frontMirror = state.frontMirror
                         )
                     )
                     _uiState.update {
-                        val dualSupported = (result.concurrentSupported || it.concurrentSupported) &&
-                            !dualDisabled
+                        val dualPhotoSupported =
+                            result.dualPhotoSupported || it.dualPhotoSupported
                         val resolved = CameraModeCatalog.resolve(
                             mode = it.mode,
-                            slowMotionSupported = result.slowMotionSupported ||
-                                it.slowMotionSupported ||
-                                result.slowMotionFps > 0,
-                            concurrentSupported = dualSupported
+                            dualPhotoSupported = dualPhotoSupported
                         )
                         val modeChanged = resolved != it.mode
                         it.copy(
@@ -290,7 +266,7 @@ class CameraViewModel(
                             videoStabilizationActive = result.videoStabilizationActive,
                             lowLightBoostSupported = result.lowLightBoostSupported,
                             videoHdrBound = result.videoHdrRange,
-                            concurrentSupported = dualSupported,
+                            dualPhotoSupported = dualPhotoSupported,
                             videoFps60Supported = result.videoFps60Supported || it.videoFps60Supported,
                             videoFps60Active = result.videoFps60Active,
                             lastSession = LastCameraSession(
@@ -312,14 +288,12 @@ class CameraViewModel(
                     Logger.error(TAG, "Bind failed: ${error.message}")
                     val state = _uiState.value
                     when {
-                        state.mode.profile().bindConcurrent -> {
-                            dualDisabled = true
+                        state.mode.profile().bindDualPhoto -> {
                             _uiState.update {
                                 it.copy(
                                     mode = CameraMode.PHOTO,
-                                    concurrentSupported = false,
                                     bindRevision = it.bindRevision + 1,
-                                    message = error.message ?: "Dual camera unavailable"
+                                    message = error.message ?: "Dual photo unavailable"
                                 )
                             }
                             persistChrome()
@@ -341,15 +315,6 @@ class CameraViewModel(
                         }
                     }
                 }
-            }
-        }
-    }
-
-    fun unbindPreview() {
-        viewModelScope.launch {
-            bindMutex.withLock {
-                if (!_uiState.value.showsTools) return@withLock
-                interactors.unbindCamera()
             }
         }
     }
@@ -397,47 +362,31 @@ class CameraViewModel(
 
     fun onHostStopped() {
         if (_uiState.value.isRecording || _uiState.value.motionCapturing) stopRecording()
-        if (_uiState.value.panoramaActive) finishPanorama()
     }
 
-    /** Finalize in-progress video or panorama (system-back Save). */
+    /** Finalize an in-progress video or LIVE capture (system-back Save). */
     fun saveActiveCapture() {
         val state = _uiState.value
-        when {
-            state.isRecording || state.motionCapturing -> {
-                discardPendingVideo = false
-                stopRecording()
-            }
-            state.panoramaActive -> finishPanorama()
+        if (state.isRecording || state.motionCapturing) {
+            discardPendingVideo = false
+            stopRecording()
         }
     }
 
-    /** Drop in-progress video or panorama without publishing (system-back Discard). */
+    /** Drop an in-progress video or LIVE capture without publishing (system-back Discard). */
     fun discardActiveCapture() {
         val state = _uiState.value
-        when {
-            state.isRecording || state.motionCapturing -> {
-                discardPendingVideo = true
-                stopRecording()
-            }
-            state.panoramaActive -> cancelPanorama()
+        if (state.isRecording || state.motionCapturing) {
+            discardPendingVideo = true
+            stopRecording()
         }
-    }
-
-    fun exitTools() {
-        if (!_uiState.value.showsTools) return
-        setMode(modeBeforeTools)
     }
 
     fun setMode(mode: CameraMode) {
         if (_uiState.value.isRecording || _uiState.value.motionCapturing || _uiState.value.lockCaptureMode) return
         val state = _uiState.value
-        if (mode == CameraMode.OTHERS && state.mode != CameraMode.OTHERS) {
-            modeBeforeTools = state.mode
-        }
         val profile = mode.profile()
-        if (!profile.isAvailable(state.slowMotionSupported, state.concurrentSupported)) return
-        if (state.panoramaActive) finishPanorama()
+        if (!profile.isAvailable(state.dualPhotoSupported)) return
         countdownJob?.cancel()
         val previous = state.mode.profile()
         val clearExtension = (profile.captureAction == CaptureAction.VIDEO ||
@@ -458,19 +407,19 @@ class CameraViewModel(
                 },
                 autoNightActive = if (profile.clearsSessionExtras) false else it.autoNightActive,
                 motionPhotoEnabled = if (profile.clearsSessionExtras) false else it.motionPhotoEnabled,
-                effect = if (profile.showsEffects) it.effect else EffectMode.NONE,
-                effectFrame = if (profile.showsEffects) it.effectFrame else null,
+                effectFrame = null,
                 bindRevision = if (rebind) it.bindRevision + 1 else it.bindRevision
             )
         }
         persistChrome()
+        updateMotionRolling()
     }
 
     fun toggleLens() {
         val state = _uiState.value
         val profile = state.mode.profile()
         if (!profile.showsFlip) return
-        if (state.motionCapturing || state.panoramaActive) return
+        if (state.motionCapturing) return
         if (state.isRecording &&
             (!flipWhileRecordingEnabled || !profile.allowsPersistentRecording)
         ) return
@@ -484,6 +433,43 @@ class CameraViewModel(
         persistChrome()
     }
 
+    /** Photo-header chip: Dual Photo on/off via the hidden DUAL_PHOTO mode. */
+    fun toggleDualPhoto() {
+        val state = _uiState.value
+        if (!state.showsDualPhotoToggle) return
+        setMode(
+            if (state.mode == CameraMode.DUAL_PHOTO) {
+                CameraMode.PHOTO
+            } else {
+                CameraMode.DUAL_PHOTO
+            }
+        )
+    }
+
+    /**
+     * Drag-and-snap result: moves the Dual PiP inset. Persists silently; Dual video
+     * composition is fixed at bind, so bump [CameraUiState.bindRevision] to rebind.
+     */
+    fun setPipCorner(corner: PipCorner) {
+        if (_uiState.value.pipCorner == corner) return
+        _uiState.update { it.copy(pipCorner = corner) }
+        interactors.setPipCorner(corner)
+        interactors.savePipCorner(corner.prefValue)
+    }
+
+    /**
+     * Pinch-zoom of the Dual PiP inset: moves scale into the session (merge + composition)
+     * and persists silently. Dual video composition is fixed at bind, so bump
+     * [CameraUiState.bindRevision] to rebind.
+     */
+    fun setPipScale(scale: Float) {
+        val clamped = scale.coerceIn(0.55f, 1.9f)
+        if (_uiState.value.pipScale == clamped) return
+        _uiState.update { it.copy(pipScale = clamped) }
+        interactors.setPipScale(clamped)
+        interactors.savePipScale(clamped.toString())
+    }
+
     fun cycleFlash() {
         if (!_uiState.value.hasFlash) return
         val next = _uiState.value.flash.next()
@@ -495,10 +481,6 @@ class CameraViewModel(
     fun cycleTimer() {
         if (_uiState.value.isRecording) return
         _uiState.update { it.copy(timer = it.timer.next()) }
-    }
-
-    fun toggleGrid() {
-        _uiState.update { it.copy(gridEnabled = !it.gridEnabled) }
     }
 
     fun setZoom(ratio: Float) {
@@ -597,6 +579,20 @@ class CameraViewModel(
         }
     }
 
+    /**
+     * Motion pre-roll: the session keeps a warm rolling clip only while Photo mode has
+     * Motion on. Skipped mid-capture (that clip is already the rolling one).
+     */
+    private fun updateMotionRolling() {
+        if (_uiState.value.motionCapturing) return
+        val state = _uiState.value
+        interactors.setMotionRolling(
+            state.motionPhotoEnabled &&
+                state.mode == CameraMode.PHOTO &&
+                !state.isRecording
+        )
+    }
+
     fun toggleMotionPhoto() {
         val state = _uiState.value
         if (state.isRecording || state.motionCapturing ||
@@ -620,6 +616,7 @@ class CameraViewModel(
                 bindRevision = if (dropExtension) it.bindRevision + 1 else it.bindRevision
             )
         }
+        updateMotionRolling()
     }
 
     fun setExposurePriority(priority: ExposurePriority) {
@@ -653,23 +650,13 @@ class CameraViewModel(
         interactors.setExposureCompensation(value)
     }
 
-    fun setEffect(type: EffectMode) {
-        _uiState.update { it.copy(effect = type) }
-        interactors.setEffect(type)
-    }
-
     fun onShutter(previewView: PreviewView) {
         val state = _uiState.value
         if (state.review != null) return
-        if (state.showsTools) return
         if (state.motionCapturing) return
         when (state.captureAction) {
             CaptureAction.VIDEO -> {
-                if (state.showsSlowMotionFps && !state.slowMotionSupported) return
                 if (state.isRecording) stopRecording() else viewModelScope.launch { startRecording() }
-            }
-            CaptureAction.PANORAMA -> {
-                if (state.panoramaActive) finishPanorama() else startPanorama(previewView)
             }
             CaptureAction.STILL -> {
                 if (state.countdownRemaining != null) return
@@ -694,31 +681,14 @@ class CameraViewModel(
         }
     }
 
-    fun toggleMute() {
-        if (!_uiState.value.microphonePermissionGranted) return
-        if (!_uiState.value.showsAudioMuteControl) return
-        val muted = !_uiState.value.isMuted
-        _uiState.update { it.copy(isMuted = muted) }
-        if (_uiState.value.isRecording) interactors.muteRecording(muted)
-    }
-
-    /** Mic chip when permission is missing — caller should launch [android.Manifest.permission.RECORD_AUDIO]. */
-    fun onMicControlClicked(requestPermission: () -> Unit) {
-        if (!_uiState.value.isRecording) return
-        if (!_uiState.value.showsAudioMuteControl) return
-        if (!_uiState.value.microphonePermissionGranted) {
-            requestPermission()
-            return
-        }
-        toggleMute()
-    }
-
+    /** Recorded audio follows the Settings mute default once the mic is granted. */
     fun onMicrophonePermissionResult(granted: Boolean) {
         updateMicrophonePermission(granted)
         if (!granted) return
         if (_uiState.value.isRecording) {
-            if (_uiState.value.isMuted) {
-                toggleMute()
+            if (_uiState.value.isMuted && !recordMutedByDefault) {
+                _uiState.update { it.copy(isMuted = false) }
+                interactors.muteRecording(false)
             }
         } else if (!recordMutedByDefault) {
             _uiState.update { it.copy(isMuted = false) }
@@ -770,6 +740,20 @@ class CameraViewModel(
         if (state.lowLightBoost != settings.lowLightBoost) {
             _uiState.update { it.copy(lowLightBoost = settings.lowLightBoost) }
             interactors.setLowLightBoost(settings.lowLightBoost)
+        }
+        // Grid is a viewfinder overlay pref (Settings → General) — no rebind on change.
+        if (state.gridEnabled != settings.gridEnabled) {
+            _uiState.update { it.copy(gridEnabled = settings.gridEnabled) }
+        }
+        // Pip corner: push into the session (merge + composition) without a rebind here;
+        // entering Dual later binds with the current corner.
+        if (state.pipCorner != settings.pipCorner) {
+            _uiState.update { it.copy(pipCorner = settings.pipCorner) }
+            interactors.setPipCorner(settings.pipCorner)
+        }
+        if (state.pipScale != settings.pipScale) {
+            _uiState.update { it.copy(pipScale = settings.pipScale) }
+            interactors.setPipScale(settings.pipScale)
         }
         if (state.captureAspect == settings.aspect &&
             state.videoQuality == settings.videoQuality &&
@@ -835,6 +819,28 @@ class CameraViewModel(
 
     private fun takePhoto(previewView: PreviewView) {
         val directory = outputDirectory ?: return
+        val state = _uiState.value
+        if (state.mode == CameraMode.DUAL_PHOTO) {
+            viewModelScope.launch {
+                interactors.captureDualPhoto(
+                    outputDirectory = directory,
+                    lens = state.lens
+                ).fold(
+                    onSuccess = { file ->
+                        shutterSound.play(MediaActionSound.SHUTTER_CLICK)
+                        completeCapture(file, video = false) {
+                            copy(captureFlashToken = captureFlashToken + 1)
+                        }
+                    },
+                    onFailure = { error ->
+                        _uiState.update {
+                            it.copy(message = error.message ?: "Photo capture failed")
+                        }
+                    }
+                )
+            }
+            return
+        }
         val motion = !_uiState.value.rawCapture &&
             (!_uiState.value.ultraHdr ||
                 externalCapture.kind == ExternalCaptureKind.MOTION_PHOTO) &&
@@ -975,7 +981,6 @@ class CameraViewModel(
             state.motionPhotoEnabled ||
             state.rawCapture ||
             !state.mode.profile().allowsNightAuto ||
-            state.panoramaActive ||
             state.isRecording ||
             state.motionCapturing ||
             CameraExtension.NIGHT !in state.supportedExtensions
@@ -1003,123 +1008,6 @@ class CameraViewModel(
 
             NightScene.UNKNOWN -> Unit
         }
-    }
-
-    fun onPanoramaYaw(yaw: Float) {
-        val state = _uiState.value
-        if (!state.panoramaActive || panoramaCaptureBusy) return
-        val previous = lastPanoramaYaw
-        if (previous == null) {
-            lastPanoramaYaw = yaw
-            return
-        }
-        val delta = kotlin.math.abs(yawDelta(previous, yaw))
-        if (delta >= PANORAMA_STEP_DEGREES && panoramaFrames.size < PANORAMA_MAX_FRAMES) {
-            lastPanoramaYaw = yaw
-            capturePanoramaFrame()
-        }
-    }
-
-    private fun startPanorama(previewView: PreviewView) {
-        panoramaFrames.clear()
-        lastPanoramaYaw = null
-        panoramaCaptureBusy = false
-        _uiState.update { it.copy(panoramaActive = true, panoramaFrames = emptyList()) }
-        capturePanoramaFrame(previewView)
-    }
-
-    private fun capturePanoramaFrame(previewView: PreviewView? = null) {
-        val directory = outputDirectory ?: return
-        val panoDir = File(directory, PANO_TEMP_DIR).also { it.mkdirs() }
-        if (panoramaCaptureBusy) return
-        panoramaCaptureBusy = true
-        viewModelScope.launch {
-            val result = interactors.capturePhoto(
-                outputDirectory = panoDir,
-                lens = _uiState.value.lens,
-                effect = _uiState.value.effect,
-                motionPhoto = false
-            )
-            result.fold(
-                onSuccess = { file ->
-                    panoramaFrames += file
-                    panoramaCaptureBusy = false
-                    _uiState.update {
-                        it.copy(
-                            panoramaFrames = panoramaFrames.toList(),
-                            captureFlashToken = it.captureFlashToken + 1,
-                            message = "Panorama step ${panoramaFrames.size}/$PANORAMA_MAX_FRAMES"
-                        )
-                    }
-                    if (panoramaFrames.size >= PANORAMA_MAX_FRAMES) finishPanorama()
-                },
-                onFailure = { error ->
-                    panoramaCaptureBusy = false
-                    _uiState.update {
-                        it.copy(message = error.message ?: "Photo capture failed")
-                    }
-                }
-            )
-        }
-        if (previewView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            previewView.postDelayed({
-                previewView.foreground = ColorDrawable(android.graphics.Color.WHITE)
-                previewView.postDelayed(
-                    { previewView.foreground = null },
-                    ANIMATION_FAST_MILLIS
-                )
-            }, ANIMATION_SLOW_MILLIS)
-        }
-    }
-
-    private fun finishPanorama() {
-        val directory = outputDirectory
-        val frames = panoramaFrames.toList()
-        panoramaFrames.clear()
-        lastPanoramaYaw = null
-        panoramaCaptureBusy = false
-        _uiState.update { it.copy(panoramaActive = false, panoramaFrames = emptyList()) }
-        if (directory == null || frames.isEmpty()) return
-        viewModelScope.launch {
-            val result = interactors.stitchPanorama(frames, directory)
-            result.fold(
-                onSuccess = { file ->
-                    withContext(dispatchers.io) {
-                        frames.forEach { frame ->
-                            if (frame != file) frame.delete()
-                        }
-                    }
-                    completeCapture(file, video = false)
-                },
-                onFailure = { error ->
-                    Logger.error(TAG, "Panorama stitch failed: ${error.message}")
-                    _uiState.update {
-                        it.copy(message = error.message ?: "Unable to stitch panorama")
-                    }
-                }
-            )
-        }
-    }
-
-    private fun cancelPanorama() {
-        val frames = panoramaFrames.toList()
-        panoramaFrames.clear()
-        lastPanoramaYaw = null
-        panoramaCaptureBusy = false
-        _uiState.update { it.copy(panoramaActive = false, panoramaFrames = emptyList()) }
-        if (frames.isEmpty()) return
-        viewModelScope.launch {
-            withContext(dispatchers.io) {
-                frames.forEach { it.delete() }
-            }
-        }
-    }
-
-    private fun yawDelta(from: Float, to: Float): Float {
-        var delta = to - from
-        while (delta > 180f) delta -= 360f
-        while (delta < -180f) delta += 360f
-        return delta
     }
 
     private fun completeCapture(
@@ -1169,7 +1057,8 @@ class CameraViewModel(
     }
 
     private fun captureReview(file: File, video: Boolean): CaptureReview {
-        val motion = !video && MotionPhotoMuxer.isMotionPhoto(file)
+        val motion = !video &&
+            (MotionPhotoMuxer.isMotionPhoto(file) || AppleLivePhotoWriter.isLivePhoto(file))
         val (width, height, durationNanos) = mediaFileInfo(file, video).let {
             Triple(it.width, it.height, it.durationNanos)
         }
@@ -1193,20 +1082,24 @@ class CameraViewModel(
         )
     }
 
+    /** Files published alongside the capture: the DNG companion and the Live Photo clip. */
     private fun companionStill(file: File, video: Boolean): List<File> {
         if (video) return emptyList()
+        val companions = mutableListOf<File>()
         val dng = File(file.parentFile, file.nameWithoutExtension + Constants.FILE.DNG_EXTENSION)
-        return if (dng.exists() && dng != file) listOf(dng) else emptyList()
+        if (dng.exists() && dng != file) companions += dng
+        val live = AppleLivePhotoWriter.companionFor(file)
+        if (live.exists() && live.length() > 0L && AppleLivePhotoWriter.isLivePhoto(file)) {
+            companions += live
+        }
+        return companions
     }
 
     companion object {
         private const val TAG = "CameraViewModel"
-        private const val PANORAMA_STEP_DEGREES = 14f
-        private const val PANORAMA_MAX_FRAMES = 10
         private const val STATE_MODE = "camera_mode"
         private const val STATE_LENS = "camera_lens"
         private const val STATE_FLASH = "camera_flash"
-        private const val PANO_TEMP_DIR = "pano_temp"
     }
 
     private fun restoreChrome() {

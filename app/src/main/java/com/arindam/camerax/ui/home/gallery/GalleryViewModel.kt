@@ -2,6 +2,7 @@ package com.arindam.camerax.ui.home.gallery
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arindam.camerax.data.camera.AppleLivePhotoWriter
 import com.arindam.camerax.data.camera.MotionPhotoMuxer
 import com.arindam.camerax.data.media.isRawCapture
 import com.arindam.camerax.data.media.isVideoCapture
@@ -60,7 +61,8 @@ class GalleryViewModel(
                     GalleryItem(
                         file = file,
                         isVideo = file.isVideoCapture(),
-                        isMotionPhoto = MotionPhotoMuxer.isMotionPhoto(file),
+                        isMotionPhoto = MotionPhotoMuxer.isMotionPhoto(file) ||
+                            AppleLivePhotoWriter.isLivePhoto(file),
                         isRaw = file.isRawCapture(),
                         width = info.width,
                         height = info.height,

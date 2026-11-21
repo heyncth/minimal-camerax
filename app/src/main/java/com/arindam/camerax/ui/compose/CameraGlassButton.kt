@@ -3,6 +3,7 @@ package com.arindam.camerax.ui.compose
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -43,6 +44,7 @@ fun CameraGlassButton(
     onGlass: Color? = null,
     glass: Color? = null,
     stroke: Color? = null,
+    onLongClick: (() -> Unit)? = null,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() }
 ) {
     val size = diameter ?: if (compact) 40.dp else ChromeControlSize
@@ -50,6 +52,20 @@ fun CameraGlassButton(
         diameter != null -> 22.dp
         compact -> 18.dp
         else -> 20.dp
+    }
+    val pressModifier = if (onLongClick != null) {
+        Modifier.combinedClickable(
+            interactionSource = interactionSource,
+            indication = ripple(bounded = true),
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    } else {
+        Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = ripple(bounded = true),
+            onClick = onClick
+        )
     }
     Box(
         modifier = modifier.size(size),
@@ -62,11 +78,7 @@ fun CameraGlassButton(
                 .clip(CircleShape)
                 .background(glass ?: CameraGlassStrong)
                 .border(1.dp, stroke ?: Color.White.copy(alpha = 0.14f), CircleShape)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = ripple(bounded = true),
-                    onClick = onClick
-                ),
+                .then(pressModifier),
             contentAlignment = Alignment.Center
         ) {
             Icon(

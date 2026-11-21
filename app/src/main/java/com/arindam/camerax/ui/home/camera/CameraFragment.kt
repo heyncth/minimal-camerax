@@ -7,13 +7,11 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.FileProvider
-import androidx.core.app.ActivityCompat
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -25,7 +23,6 @@ import com.arindam.camerax.data.camera.StillImageExif
 import com.arindam.camerax.ui.base.BaseFragmentCompose
 import com.arindam.camerax.ui.settings.SettingsActivity
 import com.arindam.camerax.ui.theme.AppTheme
-import com.arindam.camerax.util.commons.Constants.PERMISSIONS.MICROPHONE_PERMISSION
 import com.arindam.camerax.util.permission.MicrophonePermission
 import com.arindam.camerax.util.theme.applyEdgeToEdgeBars
 import com.arindam.camerax.util.theme.applyEdgeToEdgeBarsForNightMode
@@ -43,19 +40,6 @@ class CameraFragment : BaseFragmentCompose() {
         CameraViewModelFactory(app.container)
     }
 
-    private val micPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        viewModel.onMicrophonePermissionResult(granted)
-        if (granted) return@registerForActivityResult
-        if (ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(), MICROPHONE_PERMISSION)) {
-            showToast(R.string.permission_mic_denied)
-        } else {
-            showToast(R.string.permission_mic_settings)
-            MicrophonePermission.openAppSettings(requireContext())
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewModel.applyLaunchIntent(requireActivity().intent)
@@ -63,9 +47,9 @@ class CameraFragment : BaseFragmentCompose() {
 
     override fun setComposeView(view: ComposeView) = view.setContent {
         val cameraState by viewModel.uiState.collectAsStateWithLifecycle()
-        val followAppTheme = cameraState.showsTools || cameraState.review != null
-        LaunchedEffect(cameraState.showsTools, cameraState.review) {
-            if (cameraState.review != null || cameraState.showsTools) {
+        val followAppTheme = cameraState.review != null
+        LaunchedEffect(cameraState.review) {
+            if (cameraState.review != null) {
                 requireActivity().applyEdgeToEdgeBarsForNightMode()
             } else {
                 requireActivity().applyEdgeToEdgeBars(lightIcons = true)
@@ -77,7 +61,6 @@ class CameraFragment : BaseFragmentCompose() {
         ) {
             CameraScreen(
                 viewModel = viewModel,
-                onRequestMicrophonePermission = ::requestMicrophonePermission,
                 onGalleryClicked = {
                     if (viewModel.hasGalleryItems()) {
                         navigate(
@@ -97,7 +80,7 @@ class CameraFragment : BaseFragmentCompose() {
 
     override fun onResume() {
         super.onResume()
-        if (viewModel.uiState.value.review != null || viewModel.uiState.value.showsTools) {
+        if (viewModel.uiState.value.review != null) {
             requireActivity().applyEdgeToEdgeBarsForNightMode()
         } else {
             requireActivity().applyEdgeToEdgeBars(lightIcons = true)
@@ -110,14 +93,6 @@ class CameraFragment : BaseFragmentCompose() {
                 fromDestinationId = R.id.cameraFragment
             )
         }
-    }
-
-    private fun requestMicrophonePermission() {
-        if (MicrophonePermission.isGranted(requireContext())) {
-            viewModel.onMicrophonePermissionResult(true)
-            return
-        }
-        micPermissionLauncher.launch(MICROPHONE_PERMISSION)
     }
 
     private fun deliverExternalCapture(file: File) {

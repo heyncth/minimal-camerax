@@ -2,24 +2,15 @@ package com.arindam.camerax.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
-import com.arindam.camerax.R
 
-private val googleFonts = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
+/**
+ * Util: system type. The camera UI intentionally uses the platform font — no downloadable
+ * Google Fonts provider, so window inflation never waits on Play Services font resolution.
+ */
+val CameraFontFamily = FontFamily.SansSerif
 
-val CameraFontFamily = FontFamily(
-    Font(googleFont = GoogleFont("Space Grotesk"), fontProvider = googleFonts)
-)
-
-/** HUD chips, timers, zoom, ISO/shutter, and other metadata. */
-val CameraMono = FontFamily(
-    Font(googleFont = GoogleFont("Space Mono"), fontProvider = googleFonts)
-)
+/** HUD chips, timers, zoom, and other metadata. */
+val CameraMono = FontFamily.Monospace
 
 private val materialDefaults = Typography()
 

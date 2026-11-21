@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.rememberAsyncImagePainter
 import com.arindam.camerax.R
+import com.arindam.camerax.data.camera.AppleLivePhotoWriter
 import com.arindam.camerax.data.camera.MotionPhotoMuxer
 import com.arindam.camerax.ui.compose.CameraAlertDialog
 import com.arindam.camerax.ui.compose.CameraGlassButton
@@ -441,7 +442,12 @@ private fun GalleryMotionOverlay(file: File, onPlaybackError: () -> Unit) {
     val reportError by rememberUpdatedState(onPlaybackError)
     LaunchedEffect(file) {
         val result = withContext(Dispatchers.IO) {
-            runCatching { MotionPhotoMuxer.extractVideo(file, clip) }.getOrNull()
+            if (AppleLivePhotoWriter.isLivePhoto(file)) {
+                // Apple Live Photo: the clip is already a sibling file, no extraction.
+                AppleLivePhotoWriter.companionFor(file)
+            } else {
+                runCatching { MotionPhotoMuxer.extractVideo(file, clip) }.getOrNull()
+            }
         }
         extracted = result
         if (result == null) reportError()

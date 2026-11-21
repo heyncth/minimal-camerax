@@ -10,6 +10,14 @@ class FakeSettingsRepository(
     var settings: CaptureSettings = CaptureSettings()
 ) : SettingsRepository {
     override fun loadCaptureSettings(): CaptureSettings = settings
+    var savedPipCorner: String? = null
+    override fun savePipCorner(prefValue: String) {
+        savedPipCorner = prefValue
+    }
+    var savedPipScale: String? = null
+    override fun savePipScale(prefValue: String) {
+        savedPipScale = prefValue
+    }
 }
 
 /** In-memory [DeviceFeaturesRepository] for unit tests. */

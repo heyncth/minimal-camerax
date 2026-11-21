@@ -1,7 +1,6 @@
 package com.arindam.camerax.ui.settings
 
 import com.arindam.camerax.R
-import com.arindam.camerax.domain.model.SlowMotionOptions
 import com.arindam.camerax.domain.model.VideoHdrRange
 import com.arindam.camerax.domain.model.VideoQuality
 import org.junit.Assert.assertEquals
@@ -17,21 +16,6 @@ class SettingsCatalogTest {
         assertTrue(sections.any { it.titleRes == R.string.pref_title_theme })
         val toggles = sections.flatMap { it.items }.filterIsInstance<SettingsRow.Toggle>()
         assertTrue(toggles.any { it.keyRes == R.string.pref_key_capture_confirm })
-    }
-
-    @Test
-    fun settingsSections_disablesSlowMotionWhenUnavailable() {
-        val sections = settingsSections(
-            versionLabel = "1.7.0",
-            slowMotion = SlowMotionOptions()
-        )
-        val choices = sections.flatMap { it.items }.filterIsInstance<SettingsRow.Choice>()
-        val slowMotion = choices.filter {
-            it.keyRes == R.string.pref_key_slow_motion_quality ||
-                it.keyRes == R.string.pref_key_slow_motion_fps
-        }
-        assertTrue(slowMotion.isNotEmpty())
-        assertTrue(slowMotion.all { !it.enabled })
     }
 
     @Test

@@ -9,8 +9,7 @@ import com.arindam.camerax.domain.model.CaptureAspect
 import com.arindam.camerax.domain.model.CaptureSettings
 import com.arindam.camerax.domain.model.DeviceCaptureFeatures
 import com.arindam.camerax.domain.model.FlashMode
-import com.arindam.camerax.domain.model.SlowMotionOptions
-import com.arindam.camerax.domain.model.VideoQuality
+import com.arindam.camerax.domain.model.PipCorner
 import com.arindam.camerax.testing.FakeCameraRepository
 import com.arindam.camerax.testing.FakeDeviceFeaturesRepository
 import com.arindam.camerax.testing.FakeMediaRepository
@@ -55,24 +54,12 @@ class CameraViewModelTest {
     }
 
     @Test
-    fun setMode_hiddenSlowMotionIsIgnored() {
-        val vm = viewModel()
-        vm.setMode(CameraMode.SLOW_MOTION)
-        assertEquals(CameraMode.PHOTO, vm.uiState.value.mode)
-    }
-
-    @Test
-    fun setMode_slowMotionWhenSupported() {
-        val vm = viewModel(
-            device = DeviceCaptureFeatures(
-                slowMotion = SlowMotionOptions(
-                    qualities = listOf(VideoQuality.FHD),
-                    frameRates = listOf(120)
-                )
-            )
+    fun visibleModes_onlyPhotoAndVideo() {
+        val vm = viewModel(device = DeviceCaptureFeatures(dualPhotoSupported = true))
+        assertEquals(
+            listOf(CameraMode.PHOTO, CameraMode.VIDEO),
+            vm.uiState.value.visibleModes
         )
-        vm.setMode(CameraMode.SLOW_MOTION)
-        assertEquals(CameraMode.SLOW_MOTION, vm.uiState.value.mode)
     }
 
     @Test
@@ -109,59 +96,45 @@ class CameraViewModelTest {
     fun setMode_persistsToSavedState() {
         val handle = SavedStateHandle()
         val vm = viewModel(handle = handle)
-        vm.setMode(CameraMode.EFFECTS)
-        assertEquals(CameraMode.EFFECTS.name, handle["camera_mode"])
+        vm.setMode(CameraMode.VIDEO)
+        assertEquals(CameraMode.VIDEO.name, handle["camera_mode"])
     }
 
     @Test
-    fun setMode_hiddenDualIsIgnored() {
+    fun probe_fallsBackToPhotoWhenSavedDualPhotoUnsupported() {
+        val vm = viewModel(initial = CameraUiState(mode = CameraMode.DUAL_PHOTO))
+        assertEquals(CameraMode.PHOTO, vm.uiState.value.mode)
+        assertEquals(false, vm.uiState.value.visibleModes.contains(CameraMode.DUAL_PHOTO))
+    }
+
+    @Test
+    fun setMode_hiddenDualPhotoIsIgnored() {
         val vm = viewModel()
-        vm.setMode(CameraMode.DUAL)
+        vm.setMode(CameraMode.DUAL_PHOTO)
         assertEquals(CameraMode.PHOTO, vm.uiState.value.mode)
     }
 
     @Test
-    fun setMode_dualWhenConcurrentSupported() {
-        val vm = viewModel(device = DeviceCaptureFeatures(concurrent = true))
-        vm.setMode(CameraMode.DUAL)
-        assertEquals(CameraMode.DUAL, vm.uiState.value.mode)
+    fun setMode_dualPhotoWhenSupported() {
+        val vm = viewModel(device = DeviceCaptureFeatures(dualPhotoSupported = true))
+        vm.setMode(CameraMode.DUAL_PHOTO)
+        assertEquals(CameraMode.DUAL_PHOTO, vm.uiState.value.mode)
     }
 
     @Test
-    fun probe_hidesDualWhenConcurrentUnsupported() {
-        val vm = viewModel(
-            initial = CameraUiState(mode = CameraMode.DUAL, concurrentSupported = true)
-        )
+    fun toggleDualPhoto_entersWhenSupportedAndExitsBack() {
+        val vm = viewModel(device = DeviceCaptureFeatures(dualPhotoSupported = true))
+        vm.toggleDualPhoto()
+        assertEquals(CameraMode.DUAL_PHOTO, vm.uiState.value.mode)
+        vm.toggleDualPhoto()
         assertEquals(CameraMode.PHOTO, vm.uiState.value.mode)
-        assertEquals(false, vm.uiState.value.concurrentSupported)
-        assertEquals(false, vm.uiState.value.visibleModes.contains(CameraMode.DUAL))
     }
 
     @Test
-    fun setMode_othersOpensToolsHub() {
-        val vm = viewModel()
-        vm.setMode(CameraMode.OTHERS)
-        assertEquals(CameraMode.OTHERS, vm.uiState.value.mode)
-        assertEquals(true, vm.uiState.value.showsTools)
-        assertEquals(false, vm.uiState.value.showsCaptureControls)
-    }
-
-    @Test
-    fun exitTools_returnsToPreviousMode() {
-        val vm = viewModel(initial = CameraUiState(mode = CameraMode.VIDEO))
-        vm.setMode(CameraMode.OTHERS)
-        vm.exitTools()
-        assertEquals(CameraMode.VIDEO, vm.uiState.value.mode)
-        assertEquals(false, vm.uiState.value.showsTools)
-    }
-
-    @Test
-    fun exitTools_fromOthersHubDefaultsToPhoto() {
-        val vm = viewModel()
-        vm.setMode(CameraMode.OTHERS)
-        vm.exitTools()
+    fun toggleDualPhoto_noOpWhenUnsupported() {
+        val vm = viewModel(device = DeviceCaptureFeatures(dualPhotoSupported = false))
+        vm.toggleDualPhoto()
         assertEquals(CameraMode.PHOTO, vm.uiState.value.mode)
-        assertEquals(false, vm.uiState.value.showsTools)
     }
 
     @Test
@@ -185,43 +158,59 @@ class CameraViewModelTest {
     }
 
     @Test
-    fun toggleGrid_flipsFlag() {
+    fun gridEnabled_loadsFromSettings() {
+        settings.settings = CaptureSettings(gridEnabled = true)
         val vm = viewModel()
-        vm.toggleGrid()
         assertEquals(true, vm.uiState.value.gridEnabled)
-        vm.toggleGrid()
+    }
+
+    @Test
+    fun gridEnabled_defaultsOff() {
+        val vm = viewModel()
         assertEquals(false, vm.uiState.value.gridEnabled)
     }
 
     @Test
-    fun onMicControlClicked_requestsPermissionWhenDenied() {
-        var requested = false
-        val vm = viewModel(
-            initial = CameraUiState(
-                mode = CameraMode.VIDEO,
-                microphonePermissionGranted = false,
-                isRecording = true,
-                isMuted = true
-            )
-        )
-        vm.onMicControlClicked { requested = true }
-        assertTrue(requested)
+    fun setPipCorner_updatesStateSessionAndPersist() {
+        val vm = viewModel()
+        vm.setPipCorner(PipCorner.BOTTOM_RIGHT)
+        assertEquals(PipCorner.BOTTOM_RIGHT, vm.uiState.value.pipCorner)
+        assertEquals(PipCorner.BOTTOM_RIGHT, camera.lastPipCorner)
+        assertEquals(PipCorner.BOTTOM_RIGHT.prefValue, settings.savedPipCorner)
     }
 
     @Test
-    fun onMicControlClicked_togglesWhenGranted() {
-        var requested = false
-        val vm = viewModel(
-            initial = CameraUiState(
-                mode = CameraMode.VIDEO,
-                microphonePermissionGranted = true,
-                isMuted = false,
-                isRecording = true
-            )
-        )
-        vm.onMicControlClicked { requested = true }
-        assertFalse(requested)
-        assertTrue(vm.uiState.value.isMuted)
+    fun pipCorner_loadsFromSettings() {
+        settings.settings = CaptureSettings(pipCorner = PipCorner.BOTTOM_LEFT)
+        val vm = viewModel()
+        assertEquals(PipCorner.BOTTOM_LEFT, vm.uiState.value.pipCorner)
+        assertEquals(PipCorner.BOTTOM_LEFT, camera.lastPipCorner)
+    }
+
+    @Test
+    fun setPipScale_updatesStateSessionAndPersist() {
+        val vm = viewModel()
+        vm.setPipScale(1.4f)
+        assertEquals(1.4f, vm.uiState.value.pipScale, 0.001f)
+        assertEquals(1.4f, camera.lastPipScale!!, 0.001f)
+        assertEquals("1.4", settings.savedPipScale)
+    }
+
+    @Test
+    fun setPipScale_clampsOutOfRange() {
+        val vm = viewModel()
+        vm.setPipScale(5f)
+        assertEquals(1.9f, vm.uiState.value.pipScale, 0.001f)
+        vm.setPipScale(0.1f)
+        assertEquals(0.55f, vm.uiState.value.pipScale, 0.001f)
+    }
+
+    @Test
+    fun pipScale_loadsFromSettings() {
+        settings.settings = CaptureSettings(pipScale = 1.3f)
+        val vm = viewModel()
+        assertEquals(1.3f, vm.uiState.value.pipScale, 0.001f)
+        assertEquals(1.3f, camera.lastPipScale!!, 0.001f)
     }
 
     @Test
@@ -231,7 +220,6 @@ class CameraViewModelTest {
         vm.updateMicrophonePermission(granted = false)
         assertEquals(false, vm.uiState.value.microphonePermissionGranted)
         assertEquals(true, vm.uiState.value.isMuted)
-        assertEquals(false, vm.uiState.value.allowsAudioMute)
     }
 
     @Test
@@ -243,35 +231,6 @@ class CameraViewModelTest {
         )
         assertEquals(CaptureAspect.FULL, vm.uiState.value.captureAspect)
         assertEquals(before + 1, vm.uiState.value.bindRevision)
-    }
-
-    @Test
-    fun discardActiveCapture_clearsPanoramaWithoutPublishing() {
-        val vm = viewModel(
-            initial = CameraUiState(
-                mode = CameraMode.PANORAMA,
-                panoramaActive = true,
-                panoramaFrames = listOf(File("frame1.jpg"), File("frame2.jpg"))
-            )
-        )
-        vm.discardActiveCapture()
-        assertFalse(vm.uiState.value.panoramaActive)
-        assertEquals(emptyList<File>(), vm.uiState.value.panoramaFrames)
-        assertTrue(media.published.isEmpty())
-    }
-
-    @Test
-    fun saveActiveCapture_clearsEmptyPanoramaWithoutPublishing() {
-        val vm = viewModel(
-            initial = CameraUiState(
-                mode = CameraMode.PANORAMA,
-                panoramaActive = true,
-                panoramaFrames = emptyList()
-            )
-        )
-        vm.saveActiveCapture()
-        assertFalse(vm.uiState.value.panoramaActive)
-        assertTrue(media.published.isEmpty())
     }
 
     @Test

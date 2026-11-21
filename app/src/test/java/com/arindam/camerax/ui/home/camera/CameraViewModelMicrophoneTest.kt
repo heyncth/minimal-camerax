@@ -9,8 +9,6 @@ import com.arindam.camerax.domain.model.CameraMode
 import com.arindam.camerax.domain.model.CaptureSettings
 import com.arindam.camerax.domain.model.DeviceCaptureFeatures
 import com.arindam.camerax.domain.model.RecordingEvent
-import com.arindam.camerax.domain.model.SlowMotionOptions
-import com.arindam.camerax.domain.model.VideoQuality
 import com.arindam.camerax.testing.FakeCameraRepository
 import com.arindam.camerax.testing.FakeDeviceFeaturesRepository
 import com.arindam.camerax.testing.FakeMediaRepository
@@ -56,55 +54,6 @@ class CameraViewModelMicrophoneTest {
             ),
             initialState = initial
         )
-    }
-
-    @Test
-    fun toggleMute_noOpWhenPermissionDenied() {
-        val vm = viewModel(
-            initial = CameraUiState(
-                mode = CameraMode.VIDEO,
-                microphonePermissionGranted = false,
-                isMuted = true
-            )
-        )
-        vm.toggleMute()
-        assertTrue(vm.uiState.value.isMuted)
-        assertEquals(0, camera.muteRecordingCalls)
-    }
-
-    @Test
-    fun toggleMute_noOpInSlowMotionMode() {
-        val vm = viewModel(
-            device = DeviceCaptureFeatures(
-                slowMotion = SlowMotionOptions(
-                    qualities = listOf(VideoQuality.FHD),
-                    frameRates = listOf(120)
-                )
-            ),
-            initial = CameraUiState(
-                mode = CameraMode.SLOW_MOTION,
-                microphonePermissionGranted = true,
-                isMuted = false
-            )
-        )
-        vm.toggleMute()
-        assertFalse(vm.uiState.value.isMuted)
-        assertEquals(0, camera.muteRecordingCalls)
-    }
-
-    @Test
-    fun toggleMute_updatesStateAndRepositoryWhileRecording() {
-        val vm = viewModel(
-            initial = CameraUiState(
-                mode = CameraMode.VIDEO,
-                microphonePermissionGranted = true,
-                isMuted = false,
-                isRecording = true
-            )
-        )
-        vm.toggleMute()
-        assertTrue(vm.uiState.value.isMuted)
-        assertEquals(true, camera.lastMuteRecording)
     }
 
     @Test
@@ -189,34 +138,6 @@ class CameraViewModelMicrophoneTest {
         )
         vm.applyCaptureSettings(CaptureSettings(recordMuted = false))
         assertTrue(vm.uiState.value.isMuted)
-    }
-
-    @Test
-    fun onMicControlClicked_noOpWhenNotRecording() {
-        var requested = false
-        val vm = viewModel(
-            initial = CameraUiState(
-                mode = CameraMode.VIDEO,
-                microphonePermissionGranted = false
-            )
-        )
-        vm.onMicControlClicked { requested = true }
-        assertFalse(requested)
-    }
-
-    @Test
-    fun onMicControlClicked_requestsPermissionWhileRecordingWhenDenied() {
-        var requested = false
-        val vm = viewModel(
-            initial = CameraUiState(
-                mode = CameraMode.VIDEO,
-                microphonePermissionGranted = false,
-                isRecording = true,
-                isMuted = true
-            )
-        )
-        vm.onMicControlClicked { requested = true }
-        assertTrue(requested)
     }
 
     @Test

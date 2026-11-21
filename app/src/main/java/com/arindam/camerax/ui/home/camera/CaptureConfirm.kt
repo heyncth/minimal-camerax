@@ -53,6 +53,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import coil.compose.rememberAsyncImagePainter
 import com.arindam.camerax.R
+import com.arindam.camerax.data.camera.AppleLivePhotoWriter
 import com.arindam.camerax.data.camera.MotionPhotoMuxer
 import com.arindam.camerax.ui.compose.CameraGlassButton
 import com.arindam.camerax.ui.compose.ChromeControlSize
@@ -220,7 +221,11 @@ private fun ReviewMotionStill(file: File) {
             return@LaunchedEffect
         }
         val result = withContext(Dispatchers.IO) {
-            runCatching { MotionPhotoMuxer.extractVideo(file, clip) }.getOrNull()
+            if (AppleLivePhotoWriter.isLivePhoto(file)) {
+                AppleLivePhotoWriter.companionFor(file)
+            } else {
+                runCatching { MotionPhotoMuxer.extractVideo(file, clip) }.getOrNull()
+            }
         }
         extracted = result
         if (result == null) playing = false

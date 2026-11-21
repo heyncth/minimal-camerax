@@ -5,15 +5,16 @@ package com.arindam.camerax.domain.model
  * [com.arindam.camerax.data.camera.CameraSession] maps them to CameraX builders.
  */
 
-/** Pager capture mode. Chrome and bind flags live on [CameraModeProfile]. */
+/**
+ * Pager capture mode. Chrome and bind flags live on [CameraModeProfile].
+ *
+ * [DUAL_PHOTO] is not a pager chip: it is toggled from the Photo header and captures one
+ * PiP still from both lenses.
+ */
 enum class CameraMode {
     PHOTO,
     VIDEO,
-    SLOW_MOTION,
-    EFFECTS,
-    PANORAMA,
-    DUAL,
-    OTHERS
+    DUAL_PHOTO
 }
 
 /** Facing lens for bind / flip. */
@@ -120,6 +121,23 @@ enum class VideoQuality(val prefValue: String) {
     }
 }
 
+/**
+ * Corner for the Dual PiP inset (video composition, still merge, and the draggable
+ * preview outline). Persisted as a silent pref — no Settings row; drag the outline
+ * on the viewfinder to move it.
+ */
+enum class PipCorner(val prefValue: String) {
+    TOP_LEFT("top_left"),
+    TOP_RIGHT("top_right"),
+    BOTTOM_LEFT("bottom_left"),
+    BOTTOM_RIGHT("bottom_right");
+
+    companion object {
+        fun fromPref(value: String?): PipCorner =
+            entries.firstOrNull { it.prefValue == value } ?: TOP_LEFT
+    }
+}
+
 /** Video dynamic range from Settings (SDR / HLG / HDR10 / …). */
 enum class VideoHdrRange(val prefValue: String) {
     SDR("sdr"),
@@ -194,6 +212,7 @@ data class CameraBindConfig(
     val lowLightBoost: Boolean = true,
     val retainRecording: Boolean = false,
     val concurrent: Boolean = false,
+    val dualPhoto: Boolean = false,
     val videoFps60: Boolean = false,
     val frontMirror: Boolean = true
 )
@@ -219,6 +238,8 @@ data class CameraBindResult(
     val lowLightBoostSupported: Boolean = false,
     val videoHdrRange: VideoHdrRange = VideoHdrRange.SDR,
     val concurrentSupported: Boolean = false,
+    /** Device lists at least one front and one back camera (Dual photo tier). */
+    val dualPhotoSupported: Boolean = false,
     val videoFps60Supported: Boolean = false,
     val videoFps60Active: Boolean = false,
     val session: BoundSession = BoundSession()
@@ -246,10 +267,11 @@ data class BoundSession(
 enum class BoundSessionKind {
     STANDARD,
     HIGH_SPEED,
-    CONCURRENT
+    CONCURRENT,
+    DUAL_PHOTO
 }
 
-/** Last bind plus pager mode, kept after Tools unbinds the preview. */
+/** Last bind plus pager mode (diagnostics / gallery labels). */
 data class LastCameraSession(
     val mode: CameraMode,
     val bound: BoundSession
@@ -302,13 +324,21 @@ data class CaptureSettings(
     val lowLightBoost: Boolean = true,
     val videoFps60: Boolean = false,
     val frontMirror: Boolean = true,
-    val galleryVideoAutoplay: Boolean = false
+    val galleryVideoAutoplay: Boolean = false,
+    /** Viewfinder overlay pref (Settings → General → Grid), loaded with capture settings. */
+    val gridEnabled: Boolean = false,
+    /** Silent pref: Dual PiP inset corner (drag the Dual Photo outline to change). */
+    val pipCorner: PipCorner = PipCorner.TOP_LEFT,
+    /** Silent pref: Dual PiP pinch-zoom factor (pinch the Dual Photo outline to resize). */
+    val pipScale: Float = 1f
 )
 
 /** Device CameraX capabilities. Probed once per Settings open / camera start. */
 data class DeviceCaptureFeatures(
     val slowMotion: SlowMotionOptions = SlowMotionOptions(),
     val concurrent: Boolean = false,
+    /** Device lists at least one front and one back camera (Dual photo tier). */
+    val dualPhotoSupported: Boolean = false,
     val videoQualities: List<VideoQuality> = VideoQuality.entries,
     val videoHdrRanges: List<VideoHdrRange> = listOf(VideoHdrRange.SDR),
     val videoStabilization: Boolean = false,

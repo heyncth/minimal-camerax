@@ -15,9 +15,19 @@ import java.io.OutputStream
  */
 object MotionPhotoMuxer {
 
-    fun mux(stillJpeg: File, videoMp4: File, output: File): File {
+    /**
+     * Appends [videoMp4] to [stillJpeg] as an Android Motion Photo v1 file.
+     * [presentationTimestampUs] is the still's position on the video timeline (pre-roll
+     * trims shift it away from 0 — viewers freeze on this frame).
+     */
+    fun mux(
+        stillJpeg: File,
+        videoMp4: File,
+        output: File,
+        presentationTimestampUs: Long = 0L
+    ): File {
         val videoLength = videoMp4.length().toInt()
-        val xmpSegment = buildXmpSegment(videoLength)
+        val xmpSegment = buildXmpSegment(videoLength, presentationTimestampUs)
         val insertOffset = findXmpInsertOffset(stillJpeg)
 
         output.outputStream().buffered().use { outStream ->
@@ -191,8 +201,8 @@ object MotionPhotoMuxer {
     /**
      * Builds the raw APP1 segment bytes: [FF E1] [length] [XMP namespace\0] [XMP XML].
      */
-    private fun buildXmpSegment(videoLength: Int): ByteArray {
-        val xmpXml = xmpPacket(videoLength).toByteArray()
+    private fun buildXmpSegment(videoLength: Int, presentationTimestampUs: Long): ByteArray {
+        val xmpXml = xmpPacket(videoLength, presentationTimestampUs).toByteArray()
         val namespace = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray()
         val payloadSize = namespace.size + xmpXml.size
         val segmentLength = payloadSize + 2
@@ -206,7 +216,7 @@ object MotionPhotoMuxer {
         return segment
     }
 
-    private fun xmpPacket(videoLength: Int): String = """
+    private fun xmpPacket(videoLength: Int, presentationTimestampUs: Long): String = """
         <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
         <x:xmpmeta xmlns:x="adobe:ns:meta/">
           <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
@@ -216,7 +226,7 @@ object MotionPhotoMuxer {
               xmlns:Item="http://ns.google.com/photos/1.0/container/item/"
               Camera:MotionPhoto="1"
               Camera:MotionPhotoVersion="1"
-              Camera:MotionPhotoPresentationTimestampUs="0">
+              Camera:MotionPhotoPresentationTimestampUs="$presentationTimestampUs">
               <Container:Directory>
                 <rdf:Seq>
                   <rdf:li rdf:parseType="Resource">

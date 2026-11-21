@@ -12,59 +12,45 @@ data class CameraModeProfile(
     val captureAction: CaptureAction = CaptureAction.STILL,
     val showsFlash: Boolean = true,
     val showsTimer: Boolean = false,
-    val showsGrid: Boolean = true,
+    /** Apple-style LIVE toggle (pre-roll + still pair on capture). */
     val showsMotion: Boolean = false,
     val showsZoom: Boolean = true,
-    val showsStillBadge: Boolean = false,
-    val showsVideoStatus: Boolean = false,
-    val showsExposure: Boolean = true,
     val showsFlip: Boolean = true,
-    val showsEffects: Boolean = false,
+    /** Static PiP outline over the preview (the same rect is burned into the still). */
     val showsPip: Boolean = false,
-    val showsNightHint: Boolean = false,
-    val showsLowLightBoost: Boolean = false,
-    val showsTools: Boolean = false,
-    val showsCaptureControls: Boolean = true,
-    val allowsAudioMute: Boolean = true,
     val allowsNightAuto: Boolean = false,
     val allowsExtensions: Boolean = true,
-    val allowsEffect: Boolean = true,
     val allowsMotionPhoto: Boolean = false,
     val allowsFps60: Boolean = false,
     val allowsPersistentRecording: Boolean = false,
-    val bindSlowMotion: Boolean = false,
-    val bindConcurrent: Boolean = false,
+    val bindDualPhoto: Boolean = false,
     val rebindOnEnter: Boolean = false,
     val clearsSessionExtras: Boolean = false
 ) {
-    fun isAvailable(slowMotionSupported: Boolean, concurrentSupported: Boolean): Boolean =
-        when (availability) {
-            ModeAvailability.ALWAYS -> true
-            ModeAvailability.HIGH_SPEED -> slowMotionSupported
-            ModeAvailability.CONCURRENT -> concurrentSupported
-        }
+    fun isAvailable(dualPhotoSupported: Boolean): Boolean = when (availability) {
+        ModeAvailability.ALWAYS -> true
+        ModeAvailability.DUAL_PHOTO -> dualPhotoSupported
+    }
 }
 
-/** Domain: whether a pager mode is always shown or gated on device capabilities. */
+/** Domain: whether a mode is always shown or gated on device capabilities. */
 enum class ModeAvailability {
     ALWAYS,
-    HIGH_SPEED,
-    CONCURRENT
+    DUAL_PHOTO
 }
 
-/** Domain: shutter behavior for the mode (still, video, or panorama sweep). */
+/** Domain: shutter behavior for the mode (still or video). */
 enum class CaptureAction {
     STILL,
-    VIDEO,
-    PANORAMA
+    VIDEO
 }
 
 fun CameraMode.profile(): CameraModeProfile = CameraModeCatalog.profile(this)
 
 /**
- * Domain: registry of pager modes. To add a mode: [CameraMode] value, a [CameraModeProfile] here,
+ * Domain: registry of modes. To add a mode: [CameraMode] value, a [CameraModeProfile] here,
  * then `CameraMode.labelRes`. Touch [com.arindam.camerax.data.camera.CameraSession] only
- * when bind flags (slow-motion / concurrent) are not enough.
+ * when the bind flags are not enough.
  */
 object CameraModeCatalog {
     val profiles: Map<CameraMode, CameraModeProfile> = listOf(
@@ -72,89 +58,33 @@ object CameraModeCatalog {
             mode = CameraMode.PHOTO,
             showsTimer = true,
             showsMotion = true,
-            showsStillBadge = true,
-            showsNightHint = true,
-            showsLowLightBoost = true,
             allowsNightAuto = true,
             allowsMotionPhoto = true
         ),
         CameraModeProfile(
             mode = CameraMode.VIDEO,
             captureAction = CaptureAction.VIDEO,
-            showsVideoStatus = true,
-            showsLowLightBoost = true,
             allowsExtensions = false,
             allowsNightAuto = false,
             allowsFps60 = true,
             allowsPersistentRecording = true
         ),
         CameraModeProfile(
-            mode = CameraMode.SLOW_MOTION,
-            availability = ModeAvailability.HIGH_SPEED,
-            fallback = CameraMode.VIDEO,
-            captureAction = CaptureAction.VIDEO,
-            showsExposure = false,
-            allowsAudioMute = false,
-            allowsNightAuto = false,
-            allowsExtensions = false,
-            allowsEffect = false,
-            allowsMotionPhoto = false,
-            bindSlowMotion = true,
-            rebindOnEnter = true,
-            clearsSessionExtras = true
-        ),
-        CameraModeProfile(
-            mode = CameraMode.EFFECTS,
-            showsTimer = true,
-            showsStillBadge = true,
-            showsEffects = true,
-            allowsExtensions = false,
-            allowsNightAuto = false,
-            rebindOnEnter = true
-        ),
-        CameraModeProfile(
-            mode = CameraMode.PANORAMA,
-            captureAction = CaptureAction.PANORAMA,
-            showsFlash = false,
-            showsZoom = false,
-            showsExposure = false,
-            allowsNightAuto = false,
-            allowsExtensions = false,
-            allowsEffect = false,
-            allowsMotionPhoto = false
-        ),
-        CameraModeProfile(
-            mode = CameraMode.DUAL,
-            availability = ModeAvailability.CONCURRENT,
+            mode = CameraMode.DUAL_PHOTO,
+            availability = ModeAvailability.DUAL_PHOTO,
             fallback = CameraMode.PHOTO,
-            captureAction = CaptureAction.VIDEO,
-            showsGrid = true,
+            captureAction = CaptureAction.STILL,
+            showsTimer = true,
             showsZoom = false,
-            showsExposure = false,
-            showsFlip = false,
+            // Flip swaps which lens is the full-frame primary in the merged still.
+            showsFlip = true,
             showsPip = true,
-            showsVideoStatus = true,
             allowsNightAuto = false,
             allowsExtensions = false,
-            allowsEffect = false,
             allowsMotionPhoto = false,
-            bindConcurrent = true,
+            bindDualPhoto = true,
             rebindOnEnter = true,
             clearsSessionExtras = true
-        ),
-        CameraModeProfile(
-            mode = CameraMode.OTHERS,
-            showsFlash = false,
-            showsGrid = false,
-            showsZoom = false,
-            showsExposure = false,
-            showsFlip = false,
-            showsTools = true,
-            showsCaptureControls = false,
-            allowsNightAuto = false,
-            allowsExtensions = false,
-            allowsEffect = false,
-            allowsMotionPhoto = false
         )
     ).associateBy { it.mode }
 
@@ -167,23 +97,17 @@ object CameraModeCatalog {
     fun profile(mode: CameraMode): CameraModeProfile =
         profiles[mode] ?: error("Missing CameraModeProfile for $mode")
 
-    fun visibleModes(
-        slowMotionSupported: Boolean,
-        concurrentSupported: Boolean
-    ): List<CameraMode> = CameraMode.entries.filter { mode ->
-        profile(mode).isAvailable(slowMotionSupported, concurrentSupported)
-    }
-
-    fun resolve(
-        mode: CameraMode,
-        slowMotionSupported: Boolean,
-        concurrentSupported: Boolean
-    ): CameraMode {
-        val current = profile(mode)
-        return if (current.isAvailable(slowMotionSupported, concurrentSupported)) {
-            mode
-        } else {
-            current.fallback
+    /**
+     * Pager modes: Photo and Video only. Dual Photo is entered from the Photo header toggle
+     * ([profile] and [resolve] still cover it for saved-mode restore and fallback).
+     */
+    fun visibleModes(dualPhotoSupported: Boolean): List<CameraMode> =
+        CameraMode.entries.filter { mode ->
+            mode != CameraMode.DUAL_PHOTO && profile(mode).isAvailable(dualPhotoSupported)
         }
+
+    fun resolve(mode: CameraMode, dualPhotoSupported: Boolean): CameraMode {
+        val current = profile(mode)
+        return if (current.isAvailable(dualPhotoSupported)) mode else current.fallback
     }
 }

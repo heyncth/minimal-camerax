@@ -92,6 +92,8 @@ suspend fun probeDeviceFeatures(context: Context): DeviceCaptureFeatures =
         DeviceCaptureFeatures(
             slowMotion = back?.highSpeedSlowMotionOptions() ?: SlowMotionOptions(),
             concurrent = isDualCameraSupported(context, provider),
+            dualPhotoSupported = cameras.any { info -> info.lens == CameraLens.BACK } &&
+                cameras.any { info -> info.lens == CameraLens.FRONT },
             videoQualities = orderedQualities,
             videoHdrRanges = orderedHdr.ifEmpty { listOf(VideoHdrRange.SDR) },
             videoStabilization = infos.any { info ->

@@ -10,6 +10,7 @@ import com.arindam.camerax.domain.repository.DeviceFeaturesRepository
 import com.arindam.camerax.domain.repository.MediaRepository
 import com.arindam.camerax.domain.repository.SettingsRepository
 import com.arindam.camerax.domain.usecase.BindCamera
+import com.arindam.camerax.domain.usecase.CaptureDualPhoto
 import com.arindam.camerax.domain.usecase.CapturePhoto
 import com.arindam.camerax.domain.usecase.DeleteMedia
 import com.arindam.camerax.domain.usecase.GetLatestMedia
@@ -26,11 +27,16 @@ import com.arindam.camerax.domain.usecase.ProbeDeviceFeatures
 import com.arindam.camerax.domain.usecase.PublishMedia
 import com.arindam.camerax.domain.usecase.ReleaseCamera
 import com.arindam.camerax.domain.usecase.ResumeRecording
+import com.arindam.camerax.domain.usecase.SavePipCorner
+import com.arindam.camerax.domain.usecase.SavePipScale
 import com.arindam.camerax.domain.usecase.SetEffect
 import com.arindam.camerax.domain.usecase.SetExposure
 import com.arindam.camerax.domain.usecase.SetExposureCompensation
 import com.arindam.camerax.domain.usecase.SetFlash
 import com.arindam.camerax.domain.usecase.SetLowLightBoost
+import com.arindam.camerax.domain.usecase.SetMotionRolling
+import com.arindam.camerax.domain.usecase.SetPipCorner
+import com.arindam.camerax.domain.usecase.SetPipScale
 import com.arindam.camerax.domain.usecase.SetTargetRotation
 import com.arindam.camerax.domain.usecase.SetZoom
 import com.arindam.camerax.domain.usecase.StartRecording
@@ -78,12 +84,16 @@ class AppContainer(context: Context) {
 data class CameraInteractors(
     val bindCamera: BindCamera,
     val capturePhoto: CapturePhoto,
+    val captureDualPhoto: CaptureDualPhoto,
     val startRecording: StartRecording,
     val pauseRecording: PauseRecording,
     val resumeRecording: ResumeRecording,
     val stopRecording: StopRecording,
     val muteRecording: MuteRecording,
     val setFlash: SetFlash,
+    val setPipCorner: SetPipCorner,
+    val setPipScale: SetPipScale,
+    val setMotionRolling: SetMotionRolling,
     val setLowLightBoost: SetLowLightBoost,
     val setZoom: SetZoom,
     val tapToFocus: TapToFocus,
@@ -104,6 +114,8 @@ data class CameraInteractors(
     val publishMedia: PublishMedia,
     val picturesDirectory: PicturesDirectory,
     val loadCaptureSettings: LoadCaptureSettings,
+    val savePipCorner: SavePipCorner,
+    val savePipScale: SavePipScale,
     val probeDeviceFeatures: ProbeDeviceFeatures
 )
 
@@ -116,12 +128,16 @@ fun cameraInteractors(
 ) = CameraInteractors(
     bindCamera = BindCamera(cameraRepository),
     capturePhoto = CapturePhoto(cameraRepository),
+    captureDualPhoto = CaptureDualPhoto(cameraRepository),
     startRecording = StartRecording(cameraRepository),
     pauseRecording = PauseRecording(cameraRepository),
     resumeRecording = ResumeRecording(cameraRepository),
     stopRecording = StopRecording(cameraRepository),
     muteRecording = MuteRecording(cameraRepository),
     setFlash = SetFlash(cameraRepository),
+    setPipCorner = SetPipCorner(cameraRepository),
+    setPipScale = SetPipScale(cameraRepository),
+    setMotionRolling = SetMotionRolling(cameraRepository),
     setLowLightBoost = SetLowLightBoost(cameraRepository),
     setZoom = SetZoom(cameraRepository),
     tapToFocus = TapToFocus(cameraRepository),
@@ -142,5 +158,7 @@ fun cameraInteractors(
     publishMedia = PublishMedia(mediaRepository),
     picturesDirectory = PicturesDirectory(mediaRepository),
     loadCaptureSettings = LoadCaptureSettings(settingsRepository),
+    savePipCorner = SavePipCorner(settingsRepository),
+    savePipScale = SavePipScale(settingsRepository),
     probeDeviceFeatures = ProbeDeviceFeatures(deviceFeaturesRepository)
 )

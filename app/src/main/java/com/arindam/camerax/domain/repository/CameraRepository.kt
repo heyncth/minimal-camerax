@@ -9,6 +9,7 @@ import com.arindam.camerax.domain.model.ExposurePriority
 import com.arindam.camerax.domain.model.FlashMode
 import com.arindam.camerax.domain.model.LowLightBoost
 import com.arindam.camerax.domain.model.NightScene
+import com.arindam.camerax.domain.model.PipCorner
 import com.arindam.camerax.domain.model.RecordingEvent
 import com.arindam.camerax.domain.model.ZoomInfo
 import kotlinx.coroutines.flow.SharedFlow
@@ -45,6 +46,16 @@ interface CameraRepository {
         motionPhoto: Boolean
     ): Result<File>
 
+    /**
+     * Dual photo: stills from both lenses merged into one picture-in-picture JPEG.
+     * [lens] is the full-frame primary; the other lens becomes the inset.
+     * Sequential rebind / merge run off the main thread inside the data layer.
+     */
+    suspend fun captureDualPhoto(
+        outputDirectory: File,
+        lens: CameraLens
+    ): Result<File>
+
     /** Starts video recording; returns the output file on success. */
     fun startRecording(
         outputDirectory: File,
@@ -59,6 +70,24 @@ interface CameraRepository {
 
     /** Updates flash / torch without rebinding. */
     fun setFlash(mode: FlashMode)
+
+    /**
+     * Sets the Dual PiP inset corner used by the composition bind and the still merge.
+     * Live reposition while Dual video is bound requires a rebind (caller bumps bindRevision).
+     */
+    fun setPipCorner(corner: PipCorner)
+
+    /**
+     * Sets the Dual PiP pinch-zoom scale used by the composition bind and the still merge.
+     * Live change while Dual video is bound requires a rebind (caller bumps bindRevision).
+     */
+    fun setPipScale(scale: Float)
+
+    /**
+     * Keeps a muted rolling clip warm so motion photos include ~1.5 s pre-roll.
+     * Files live in app cache (never MediaStore); [enabled] false stops and drops them.
+     */
+    fun setMotionRolling(enabled: Boolean)
 
     /** Enables low-light boost when supported; no rebind. */
     fun setLowLightBoost(enabled: Boolean)

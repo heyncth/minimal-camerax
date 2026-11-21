@@ -17,6 +17,7 @@ import com.arindam.camerax.domain.model.ExposurePriority
 import com.arindam.camerax.domain.model.FlashMode
 import com.arindam.camerax.domain.model.LowLightBoost
 import com.arindam.camerax.domain.model.NightScene
+import com.arindam.camerax.domain.model.PipCorner
 import com.arindam.camerax.domain.model.RecordingEvent
 import com.arindam.camerax.domain.model.ZoomInfo
 import com.arindam.camerax.domain.repository.CameraRepository
@@ -40,6 +41,14 @@ class CapturePhoto(private val repository: CameraRepository) {
         effect: EffectMode,
         motionPhoto: Boolean
     ): Result<File> = repository.capturePhoto(outputDirectory, lens, effect, motionPhoto)
+}
+
+/** Dual photo: both lenses in one merged still; [lens] is the full-frame primary. */
+class CaptureDualPhoto(private val repository: CameraRepository) {
+    suspend operator fun invoke(
+        outputDirectory: File,
+        lens: CameraLens
+    ): Result<File> = repository.captureDualPhoto(outputDirectory, lens)
 }
 
 /** Start video. [persistent] keeps the clip across a lens flip when Settings allows it. */
@@ -74,6 +83,21 @@ class MuteRecording(private val repository: CameraRepository) {
 /** Flash / torch. Does not rebind. */
 class SetFlash(private val repository: CameraRepository) {
     operator fun invoke(mode: FlashMode) = repository.setFlash(mode)
+}
+
+/** Dual PiP inset corner (composition bind + still merge). Does not rebind by itself. */
+class SetPipCorner(private val repository: CameraRepository) {
+    operator fun invoke(corner: PipCorner) = repository.setPipCorner(corner)
+}
+
+/** Dual PiP pinch-zoom scale (composition bind + still merge). Does not rebind by itself. */
+class SetPipScale(private val repository: CameraRepository) {
+    operator fun invoke(scale: Float) = repository.setPipScale(scale)
+}
+
+/** Motion photo pre-roll: keeps a muted rolling clip warm (Photo + Motion on only). */
+class SetMotionRolling(private val repository: CameraRepository) {
+    operator fun invoke(enabled: Boolean) = repository.setMotionRolling(enabled)
 }
 
 /** Low-light boost. Does not rebind. */
@@ -163,7 +187,7 @@ class DeleteMedia(private val repository: MediaRepository) {
     suspend operator fun invoke(file: File): Boolean = repository.delete(file)
 }
 
-/** Horizontal sweep stitch for [com.arindam.camerax.domain.model.CameraMode.PANORAMA]. */
+/** Horizontal sweep stitch. Unused by the current minimal Photo / Video surface. */
 class StitchPanorama(private val repository: MediaRepository) {
     suspend operator fun invoke(frames: List<File>, outputDirectory: File): Result<File> =
         repository.stitchPanorama(frames, outputDirectory)
@@ -177,6 +201,16 @@ class PublishMedia(private val repository: MediaRepository) {
 /** Bind flags from Settings. */
 class LoadCaptureSettings(private val repository: SettingsRepository) {
     operator fun invoke(): CaptureSettings = repository.loadCaptureSettings()
+}
+
+/** Persists the silent Dual PiP corner pref. */
+class SavePipCorner(private val repository: SettingsRepository) {
+    operator fun invoke(prefValue: String) = repository.savePipCorner(prefValue)
+}
+
+/** Persists the silent Dual PiP pinch-scale pref. */
+class SavePipScale(private val repository: SettingsRepository) {
+    operator fun invoke(prefValue: String) = repository.savePipScale(prefValue)
 }
 
 /** CameraX capability probe (one provider fetch). */

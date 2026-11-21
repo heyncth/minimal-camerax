@@ -22,6 +22,7 @@ import com.arindam.camerax.domain.model.LastCameraSession
 import com.arindam.camerax.domain.model.FlashMode
 import com.arindam.camerax.domain.model.NightScene
 import com.arindam.camerax.domain.model.PhysicalZoom
+import com.arindam.camerax.domain.model.PipCorner
 import com.arindam.camerax.domain.model.SlowMotionRate
 import com.arindam.camerax.domain.model.StillFormat
 import com.arindam.camerax.domain.model.TimerMode
@@ -29,16 +30,12 @@ import com.arindam.camerax.domain.model.VideoHdrRange
 import com.arindam.camerax.domain.model.VideoQuality
 import java.io.File
 
-/** String resource for the mode pager chip. Add a mapping when you add a [CameraMode]. */
+/** String resource for the mode strip. Add a mapping when you add a [CameraMode]. */
 val CameraMode.labelRes: Int
     @StringRes get() = when (this) {
         CameraMode.PHOTO -> R.string.mode_photo
         CameraMode.VIDEO -> R.string.mode_video
-        CameraMode.SLOW_MOTION -> R.string.mode_slow_motion
-        CameraMode.EFFECTS -> R.string.mode_effects
-        CameraMode.PANORAMA -> R.string.mode_panorama
-        CameraMode.DUAL -> R.string.mode_dual
-        CameraMode.OTHERS -> R.string.mode_others
+        CameraMode.DUAL_PHOTO -> R.string.mode_dual_photo
     }
 
 val FlashMode.labelRes: Int
@@ -93,6 +90,10 @@ data class CameraUiState(
     val flash: FlashMode = FlashMode.OFF,
     val timer: TimerMode = TimerMode.OFF,
     val gridEnabled: Boolean = false,
+    /** Shared Dual PiP inset corner (drag the outline to move it; photo merge + Dual video). */
+    val pipCorner: PipCorner = PipCorner.TOP_LEFT,
+    /** Shared Dual PiP pinch-zoom factor (pinch the outline to resize; merge + Dual video). */
+    val pipScale: Float = 1f,
     val countdownRemaining: Int? = null,
     val zoomRatio: Float = 1f,
     val minZoom: Float = 1f,
@@ -135,8 +136,6 @@ data class CameraUiState(
     val iso: Int = 100,
     val shutterNanos: Long = 16_666_667L,
     val exposureCompensation: Int = 0,
-    val panoramaActive: Boolean = false,
-    val panoramaFrames: List<File> = emptyList(),
     val cameraId: String? = null,
     val physicalZooms: List<PhysicalZoom> = emptyList(),
     val slowMotionSupported: Boolean = false,
@@ -148,6 +147,7 @@ data class CameraUiState(
     val frontMirror: Boolean = true,
     val review: CaptureReview? = null,
     val concurrentSupported: Boolean = false,
+    val dualPhotoSupported: Boolean = false,
     val videoFps60: Boolean = false,
     val videoFps60Supported: Boolean = false,
     val videoFps60Active: Boolean = false,
@@ -177,7 +177,7 @@ data class CameraUiState(
         get() = zoomChips.minByOrNull { kotlin.math.abs(it - zoomRatio) } ?: zoomRatio
 
     val visibleModes: List<CameraMode>
-        get() = CameraModeCatalog.visibleModes(slowMotionSupported, concurrentSupported)
+        get() = CameraModeCatalog.visibleModes(dualPhotoSupported)
 
     private val profile get() = CameraModeCatalog.profile(mode)
 
@@ -185,52 +185,23 @@ data class CameraUiState(
         get() = hasFlash && profile.showsFlash
 
     val showsTimer: Boolean
-        get() = profile.showsTimer
+        get() = profile.showsTimer && !isRecording
 
-    val showsGrid: Boolean
-        get() = profile.showsGrid
-
+    /** LIVE chip: Photo mode with a still format that can be paired with a clip. */
     val showsMotion: Boolean
         get() = profile.showsMotion && profile.allowsMotionPhoto && !rawCapture
 
+    /** Photo-header Dual Photo toggle — hidden when the device lists no front + back pair. */
+    val showsDualPhotoToggle: Boolean
+        get() = dualPhotoSupported &&
+            (mode == CameraMode.PHOTO || mode == CameraMode.DUAL_PHOTO)
+
+    /** Static PiP outline over the primary preview while Dual Photo is on. */
+    val showsDualPhotoOutline: Boolean
+        get() = mode == CameraMode.DUAL_PHOTO
+
     val showsZoomChips: Boolean
-        get() = profile.showsZoom
-
-    val showsStillBadge: Boolean
-        get() = profile.showsStillBadge &&
-            (stillFormat == StillFormat.RAW_JPEG || ultraHdrEnabled)
-
-    val showsVideoStatus: Boolean
-        get() = profile.showsVideoStatus
-
-    val showsExposureControls: Boolean
-        get() = profile.showsExposure &&
-            (exposureLimits.supportedPriorities.size >= 2 ||
-                exposureLimits.evSupported)
-
-    val showsEffects: Boolean
-        get() = profile.showsEffects
-
-    val showsPip: Boolean
-        get() = profile.showsPip
-
-    val showsTools: Boolean
-        get() = profile.showsTools
-
-    val showsCaptureControls: Boolean
-        get() = profile.showsCaptureControls
-
-    val showsNightHint: Boolean
-        get() = profile.showsNightHint
-
-    val showsLowLightBoost: Boolean
-        get() = profile.showsLowLightBoost
-
-    val showsAudioMuteControl: Boolean
-        get() = profile.allowsAudioMute
-
-    val allowsAudioMute: Boolean
-        get() = profile.allowsAudioMute && microphonePermissionGranted
+        get() = profile.showsZoom && !isRecording
 
     val captureAction: CaptureAction
         get() = profile.captureAction
@@ -238,12 +209,6 @@ data class CameraUiState(
     val showsFlipControl: Boolean
         get() = profile.showsFlip &&
             (!isRecording || (flipWhileRecording && profile.allowsPersistentRecording))
-
-    val recordsVideo: Boolean
-        get() = profile.captureAction == CaptureAction.VIDEO
-
-    val showsSlowMotionFps: Boolean
-        get() = profile.bindSlowMotion
 }
 
 /**

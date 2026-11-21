@@ -1,6 +1,6 @@
-# CameraX
+# minimal-camerax
 
-A Play Store camera app in Kotlin, built with [Jetpack CameraX](https://developer.android.com/media/camera/camerax) 1.6. It is a working reference other apps can copy: photo, video, OEM extensions, live ColorMatrix effects (`ImageAnalysis`), and Dual PiP video, with a Compose UI.
+A Play Store camera app in Kotlin, built with [Jetpack CameraX](https://developer.android.com/media/camera/camerax) 1.6. It is a working reference other apps can copy: a minimal iPhone-style camera with Photo, Video, LIVE (a real Apple Live Photo) and DUAL (both lenses in one picture-in-picture still), with a Compose UI.
 
 [<img src="https://play.google.com/intl/en_us/badges/images/generic/en_badge_web_generic.png"
 alt="Get it on Google Play" height="90">](https://play.google.com/store/apps/details?id=com.arindam.camerax)
@@ -8,6 +8,7 @@ alt="Get it on Google Play" height="90">](https://play.google.com/store/apps/det
 [![Open Source Love](https://badges.frapsoft.com/os/v1/open-source.svg?v=102)](https://opensource.org/licenses/Apache-2.0)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
+- [Repository](https://github.com/heyncth/minimal-camerax)
 - [Project page](https://arindamxd.github.io/projects/camerax)
 - [Privacy policy](https://arindamxd.github.io/projects/camerax/privacy-policy)
 - [Author](https://arindamxd.github.io/)
@@ -18,22 +19,21 @@ The **app** is named CameraX. It is built with the Jetpack **CameraX library** (
 
 | In the app | What it demonstrates |
 | --- | --- |
-| **Photo** | Still capture with flash, timer, grid, pinch zoom, tap-to-focus |
-| **Video** | Record with audio, pause / resume, mute, 60 fps when listed, `.mp4` in gallery |
-| **Slo-mo** | High-speed `Preview` + `VideoCapture` when the device lists SDR high-speed qualities |
-| **Effects** | Live ColorMatrix effects on `ImageAnalysis` (None, Grayscale, Invert, Sepia, Cool, Warm, Vivid) |
-| **Pano** | Horizontal sweep stitch |
-| **Dual** | Concurrent front + back composition (`CompositionSettings`): one PiP preview and one MP4 (~720p) |
+| **Photo** | Still capture with flash, timer, tap-to-focus, pinch zoom, 0.5× / 1× / 2× chips, optional Grid |
+| **LIVE** | A real Apple Live Photo pair: JPEG with the Apple MakerNote plus a `.mov` sibling that carries `com.apple.quicktime.content.identifier` and a still-image-time track (1.5 s pre-roll + 1.5 s post-roll) |
+| **Video** | Record with audio, flip while recording, video HDR / stabilization / 60 fps when the device lists them, `.mp4` in the gallery |
+| **DUAL** | Both lenses in one picture-in-picture still: the **DUAL** chip in the Photo header; simultaneous capture when the device allows it, sequential rebind fallback; the white outline shows where the inset lands — drag it anywhere and it snaps to the nearest corner, pinch to resize |
 
-Unsupported OEM chips stay hidden. If a device cannot bind preview + photo + video together, the camera falls back (drop video, stills only) instead of crashing. Dual uses composition video (no stills); if composition cannot bind, Dual is hidden / unavailable.
+Unsupported controls stay hidden. If a device cannot bind preview + photo + video together, the camera falls back (drop video, stills only) instead of crashing. DUAL hides unless a front and back camera are listed, always outputs a plain merged JPEG, and keeps the surviving single-lens still if the second capture or the merge fails. LIVE falls back to Android's motion-photo format if the Apple pair cannot be written.
+
+The surface is deliberately small: black viewfinder, system type, yellow `#FFD60A` for the selected mode, a 76dp shutter, and a `PHOTO · VIDEO` strip. Slo-mo, Effects, Panorama and separate Dual-video mode are not part of the product.
 
 ## Try it
 
 1. Grant **camera** and **microphone**.
-2. Swipe **Photo / Video / Slo-mo / Effects / Pano / Dual** at the bottom (Slo-mo and Dual hide when unsupported). Quick controls on the live feed change with the selected mode; the gear opens full Settings.
+2. Swipe **PHOTO · VIDEO** above the shutter. In **Photo**, tap **LIVE** for a Live Photo, or **DUAL** for both lenses in one still — drag the white PiP outline to place the inset (pinch to resize; it snaps to the nearest corner). The gear opens Settings.
 3. Photo shutter is a white disc; video is red and becomes a stop square while recording.
-4. In **Effects**, pick None / Grayscale / Invert / Sepia / Cool / Warm / Vivid. The live feed is the processed `ImageAnalysis` frame; switching chips does not rebind.
-5. Open the thumbnail to browse, share, or delete photos and videos.
+4. Open the thumbnail to browse, share, or delete photos and videos. Live Photos play their clip; gallery videos offer 0.5×–2× playback speed.
 
 ## Architecture
 
@@ -53,8 +53,6 @@ flowchart LR
   CameraSession --> Preview
   CameraSession --> ImageCapture
   CameraSession --> VideoCapture
-  CameraSession --> ImageAnalysis
-  CameraSession --> OverlayEffect
 ```
 
 | Layer | Package | Role |
@@ -74,7 +72,8 @@ app/src/main/java/com/arindam/camerax/
   domain/model/          CameraMode, CameraModeCatalog, bind config
   domain/repository/     CameraRepository, MediaRepository
   domain/usecase/        CapturePhoto, StartRecording, BindCamera, …
-  data/camera/           CameraSession, ColorEffectAnalyzer, mappers
+  data/camera/           CameraSession, AppleLivePhotoWriter, MotionPhotoMuxer,
+                         DualComposition, DualPhotoMerger, StillImageExif
   data/media/            FileMediaRepository, MediaStorePublisher
   di/                    AppContainer (composition root)
   ui/home/camera/        CameraScreen, CameraChrome, CameraViewModel
@@ -83,7 +82,7 @@ app/src/main/java/com/arindam/camerax/
   ui/compose/            CameraGlassButton, ChromeActionPill (ChromeControlSize = 44.dp)
 ```
 
-Glass chrome controls (back, motion chip, Retake/Done, gallery actions) share **`ChromeControlSize` (44dp)**. Full-screen headers use **20dp** side / **8dp** top padding after `safeDrawing` only — see [AGENTS.md](AGENTS.md#chrome-control-size) and [header padding](AGENTS.md#chrome-screen-insets--header-padding).
+Gallery / Confirm / Settings controls share **`ChromeControlSize` (44dp)**. Full-screen headers use **20dp** side / **8dp** top padding after `safeDrawing` only — see [AGENTS.md](AGENTS.md#chrome-control-size) and [header padding](AGENTS.md#chrome-screen-insets--header-padding).
 
 ## CameraX API map
 
@@ -91,14 +90,16 @@ Glass chrome controls (back, motion chip, Retake/Done, gallery actions) share **
 | --- | --- |
 | Viewfinder | `Preview` + `PreviewView` |
 | Photo | `ImageCapture` |
-| Video, pause, mute | `VideoCapture` + `Recorder` + `Recording` |
+| LIVE (Apple Live Photo) | Rolling `VideoCapture` clip + `MotionPhotoTrimmer` + `AppleLivePhotoWriter` (JPEG EXIF + `.mov`) |
+| Video | `VideoCapture` + `Recorder` + `Recording` |
 | Flash / torch | `ImageCapture.flashMode` + `CameraControl.enableTorch` |
 | Pinch zoom and 0.5 / 1x / 2x chips | `CameraControl.setZoomRatio` / `ZoomState` |
 | Tap to focus | `FocusMeteringAction` |
 | HDR / Night / Portrait / Beauty | `ExtensionsManager` (`ExtensionMode`) |
-| Live color-matrix effects | `ImageAnalysis` + `ColorMatrix` / `ColorMatrixColorFilter` (`ColorEffectAnalyzer`) |
-| Dual PiP video | Concurrent composition (`CompositionSettings` + shared Preview/VideoCapture) |
+| DUAL PiP still | Non-composition `ConcurrentCamera` with an `ImageCapture` per lens (`SingleCameraConfig`), sequential rebind fallback, merged by `DualPhotoMerger` |
 | 60 fps video | `SessionConfig` + `GroupableFeature.FPS_60` after `isSessionConfigSupported` |
+| Video HDR | `Recorder` supported dynamic ranges → `VideoCapture.Builder.setDynamicRange` |
+| Video stabilization | `Preview` / `VideoCapture` stabilization after capability checks |
 
 Copy-paste path for another app: start at [`CameraRepository`](app/src/main/java/com/arindam/camerax/domain/repository/CameraRepository.kt) and [`CameraSession`](app/src/main/java/com/arindam/camerax/data/camera/CameraSession.kt).
 
@@ -150,7 +151,7 @@ Repositories run disk and MediaStore work on `AppDispatchers.io`. ViewModels use
 
 ## Stretch (not in this app yet)
 
-Full photo editor; catalog-style green-screen (selfie segmentation over the back camera); Scan / ML Kit analysis. Dual is concurrent PiP composition video, not that overlay.
+Full photo editor; catalog-style selfie segmentation live overlay; Scan / ML Kit analysis.
 
 ## Contributing
 

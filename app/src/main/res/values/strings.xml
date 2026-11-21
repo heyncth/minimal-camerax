@@ -4,6 +4,7 @@
     <!-- Common chrome (content descriptions, share, navigation) -->
     <string name="capture_button_alt">Capture</string>
     <string name="switch_camera_button_alt">Switch camera</string>
+    <string name="swap_dual_primary_button">Swap primary camera</string>
     <string name="gallery_button_alt">Gallery</string>
     <string name="back_button_alt">Back</string>
     <string name="share_button_alt">Share</string>
@@ -27,14 +28,15 @@
     <string name="permission_mic_denied">Microphone permission denied</string>
     <string name="permission_mic_settings">Enable microphone in Settings to record video with sound</string>
 
-    <!-- Live camera: mode pager -->
+    <!-- Live camera: mode strip + iPhone-style chips -->
     <string name="mode_photo">Photo</string>
     <string name="mode_video">Video</string>
-    <string name="mode_slow_motion">Slo-mo</string>
-    <string name="mode_effects">Effects</string>
-    <string name="mode_panorama">Pano</string>
-    <string name="mode_dual">Dual</string>
-    <string name="mode_others">Others</string>
+    <string name="mode_dual_photo">Dual Photo</string>
+    <string name="dual_photo_on">Dual photo on</string>
+    <string name="dual_photo_off">Dual photo off</string>
+    <string name="dual_label">DUAL</string>
+    <string name="live_label">LIVE</string>
+    <string name="switch_camera">Switch camera</string>
     <string name="capture_mode_camera">Camera</string>
     <string name="capture_mode_hdr">HDR</string>
     <string name="capture_mode_night">Night</string>
@@ -49,6 +51,8 @@
     <string name="timer_10">Timer 10 seconds</string>
     <string name="grid_on">Grid on</string>
     <string name="grid_off">Grid off</string>
+    <string name="header_controls_show">Show camera controls</string>
+    <string name="header_controls_hide">Hide camera controls</string>
     <string name="motion_photo_on">Motion photo on</string>
     <string name="motion_photo_off">Motion photo off</string>
     <string name="motion_photo_disable_ultra_hdr">Turn off Ultra HDR in Settings to use motion photos</string>
@@ -214,6 +218,7 @@
     <string name="session_kind_standard">Standard session</string>
     <string name="session_kind_high_speed">High-speed slo-mo</string>
     <string name="session_kind_concurrent">Concurrent Dual</string>
+    <string name="session_kind_dual_photo">Dual Photo</string>
     <string name="session_row_mode">Mode</string>
     <string name="session_row_usecases">Use cases</string>
     <string name="session_row_fallback">Stills-only fallback</string>
@@ -272,6 +277,9 @@
     <string name="pref_key_record_muted" translatable="false">key_record_muted</string>
     <string name="pref_key_front_mirror" translatable="false">key_front_mirror</string>
     <string name="pref_key_gallery_video_autoplay" translatable="false">key_gallery_video_autoplay</string>
+    <string name="pref_key_grid" translatable="false">key_grid</string>
+    <string name="pref_key_pip_corner" translatable="false">key_pip_corner</string>
+    <string name="pref_key_pip_scale" translatable="false">key_pip_scale</string>
 
     <!-- Settings: section titles -->
     <string name="pref_title_theme">Theme</string>
@@ -296,6 +304,8 @@
     <string name="pref_subtitle_gallery_video_autoplay">Play gallery clips in a loop without play controls</string>
     <string name="pref_title_front_mirror">Front camera mirror</string>
     <string name="pref_subtitle_front_mirror">Flip selfie preview and saved photos or videos</string>
+    <string name="pref_title_grid">Grid</string>
+    <string name="pref_subtitle_grid">Show rule-of-thirds lines in the viewfinder</string>
 
     <!-- Settings: Photo -->
     <string name="pref_title_ultra_hdr">Ultra HDR</string>
@@ -358,7 +368,7 @@
     <string name="pref_title_playstore">PlayStore</string>
     <string name="pref_subtitle_playstore">com.arindam.camerax ↗</string>
     <string name="pref_title_github">GitHub</string>
-    <string name="pref_subtitle_github">camerax-android ↗</string>
+    <string name="pref_subtitle_github">minimal-camerax ↗</string>
     <string name="pref_title_privacy">Privacy Policy</string>
     <string name="pref_subtitle_privacy">How CameraX uses data ↗</string>
     <string name="pref_title_developer">Developer</string>
@@ -366,7 +376,7 @@
     <string name="pref_title_version">Version</string>
     <string name="pref_subtitle_version">@string/app_version</string>
     <string name="link_playstore" translatable="false">https://play.google.com/store/apps/details?id=com.arindam.camerax</string>
-    <string name="link_repository" translatable="false">https://github.com/arindamxd/camerax-android</string>
+    <string name="link_repository" translatable="false">https://github.com/heyncth/minimal-camerax</string>
     <string name="link_developer" translatable="false">https://arindamxd.github.io/</string>
     <string name="link_privacy" translatable="false">https://arindamxd.github.io/projects/camerax/privacy-policy/</string>
 

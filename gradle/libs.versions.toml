@@ -82,7 +82,6 @@ androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomato
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
-androidx-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text-google-fonts" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }

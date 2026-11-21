@@ -5,6 +5,7 @@ import androidx.preference.PreferenceManager
 import com.arindam.camerax.R
 import com.arindam.camerax.domain.model.CaptureAspect
 import com.arindam.camerax.domain.model.CaptureSettings
+import com.arindam.camerax.domain.model.PipCorner
 import com.arindam.camerax.domain.model.SlowMotionRate
 import com.arindam.camerax.domain.model.VideoHdrRange
 import com.arindam.camerax.domain.model.VideoQuality
@@ -32,8 +33,19 @@ class PreferenceSettingsRepository(context: Context) : SettingsRepository {
         lowLightBoost = prefs.getBoolean(key(R.string.pref_key_low_light_boost), true),
         videoFps60 = prefs.getBoolean(key(R.string.pref_key_video_fps_60), false),
         frontMirror = prefs.getBoolean(key(R.string.pref_key_front_mirror), true),
-        galleryVideoAutoplay = prefs.getBoolean(key(R.string.pref_key_gallery_video_autoplay), false)
+        galleryVideoAutoplay = prefs.getBoolean(key(R.string.pref_key_gallery_video_autoplay), false),
+        gridEnabled = prefs.getBoolean(key(R.string.pref_key_grid), false),
+        pipCorner = PipCorner.fromPref(prefs.getString(key(R.string.pref_key_pip_corner), null)),
+        pipScale = prefs.getString(key(R.string.pref_key_pip_scale), null)?.toFloatOrNull() ?: 1f
     )
+
+    override fun savePipCorner(prefValue: String) {
+        prefs.edit().putString(key(R.string.pref_key_pip_corner), prefValue).apply()
+    }
+
+    override fun savePipScale(prefValue: String) {
+        prefs.edit().putString(key(R.string.pref_key_pip_scale), prefValue).apply()
+    }
 
     private fun key(id: Int): String = appContext.getString(id)
 }

@@ -84,7 +84,6 @@ fun SettingsScreen(
             videoQualities = features.videoQualities,
             videoHdrRanges = features.videoHdrRanges,
             videoStabilizationAvailable = features.videoStabilization,
-            slowMotion = features.slowMotion,
             ultraHdrAvailable = features.ultraHdr,
             rawCaptureAvailable = features.rawCapture,
             fullSensorRawAvailable = features.fullSensorRaw,

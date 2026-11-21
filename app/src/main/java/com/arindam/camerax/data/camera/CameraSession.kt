@@ -14,6 +14,7 @@ import android.hardware.camera2.TotalCaptureResult
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Surface
 import androidx.annotation.MainThread
 import androidx.annotation.OptIn
@@ -75,6 +76,7 @@ import com.arindam.camerax.domain.model.ExposurePriority
 import com.arindam.camerax.domain.model.FlashMode
 import com.arindam.camerax.domain.model.LowLightBoost
 import com.arindam.camerax.domain.model.NightScene
+import com.arindam.camerax.domain.model.PipCorner
 import com.arindam.camerax.domain.model.PhysicalZoom
 import com.arindam.camerax.domain.model.RecordingEvent
 import com.arindam.camerax.domain.model.StillFormat
@@ -83,6 +85,8 @@ import com.arindam.camerax.domain.model.ZoomInfo
 import com.arindam.camerax.domain.repository.CameraRepository
 import com.arindam.camerax.util.commons.Constants
 import com.arindam.camerax.util.log.Logger
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -150,13 +154,38 @@ class CameraSession(private val context: Context) : CameraRepository {
     private var motionOnSaved: ((File) -> Unit)? = null
     private var motionOnError: ((String) -> Unit)? = null
     private var motionAwaitingVideo = false
+    private var motionVideoIsRolling = false
+    private val motionStopRunnable = Runnable { stopMotionRollingForCapture() }
+    @Volatile
+    private var motionRollingRequested = false
+    @Volatile
+    private var motionRollingActive = false
+    private var motionRollingFile: File? = null
+    private var motionRollingStartedAt = 0L
+    private var motionShutterAt = 0L
+    private val motionPrerollDir by lazy {
+        File(context.cacheDir, "motion_preroll").apply { mkdirs() }
+    }
+    private val motionRollingRestartRunnable = Runnable { restartMotionRolling() }
     private var previewBoosted = false
     private var userExposureIndex: Int? = null
     private var fps60Active = false
     private var lastBoundKind = BoundSessionKind.STANDARD
+    @Volatile
+    private var pipCorner: PipCorner = PipCorner.TOP_LEFT
+    @Volatile
+    private var pipScale: Float = 1f
     private var lastStillsOnlyFallback = false
     private var lastBoundExtension = CameraExtension.NONE
     private var lastRawFullSensor = false
+    private var dualPhotoActive = false
+    private var dualPhotoSimultaneous = false
+    /** Set after the simultaneous graph fails; keeps the sequential tier from retrying it every bind. */
+    private var dualPhotoSequentialOnly = false
+    private var dualImageCapture: ImageCapture? = null
+    private var dualSecondaryLens: CameraLens? = null
+    private var dualBaseHost: PreviewViewHost? = null
+    private var dualBaseConfig: CameraBindConfig? = null
 
     private val initMutex = Mutex()
 
@@ -180,6 +209,13 @@ class CameraSession(private val context: Context) : CameraRepository {
     @MainThread
     @OptIn(ExperimentalCamera2Interop::class)
     override suspend fun bind(host: CameraHost, config: CameraBindConfig): CameraBindResult {
+        // Rebind kills the active recording — drop the rolling pre-roll first;
+        // finishBind restarts it when motion photos are still requested.
+        cancelMotionRolling()
+        return bindSession(host, config)
+    }
+
+    private suspend fun bindSession(host: CameraHost, config: CameraBindConfig): CameraBindResult {
         val previewHost = host as? PreviewViewHost
             ?: throw IllegalArgumentException("Unsupported camera host")
         val lifecycleOwner = previewHost.lifecycleOwner
@@ -196,6 +232,12 @@ class CameraSession(private val context: Context) : CameraRepository {
         imageCapture = null
         videoCapture = null
         preview = null
+        dualPhotoActive = false
+        dualPhotoSimultaneous = false
+        dualImageCapture = null
+        dualSecondaryLens = null
+        dualBaseHost = null
+        dualBaseConfig = null
 
         previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         previewView.scaleType = if (config.slowMotion || config.captureAspect == CaptureAspect.FULL) {
@@ -212,6 +254,21 @@ class CameraSession(private val context: Context) : CameraRepository {
             return bindConcurrent(provider, previewHost, config, rotation)
         }
 
+        if (config.dualPhoto) {
+            // Simultaneous tier: separate-stream ConcurrentCamera with an ImageCapture per lens.
+            // Failure falls through to the standard single-camera bind (sequential tier).
+            if (bindDualPhoto(provider, previewHost, config, rotation)) {
+                dualBaseHost = previewHost
+                dualBaseConfig = config
+                dualPhotoActive = true
+                return finishBind(
+                    config = config,
+                    slowMotionSupported = isHighSpeedSupported(camera?.cameraInfo),
+                    slowMotionFps = 0
+                )
+            }
+        }
+
         val requestedSelector = selectorFor(config)
         val requestedInfo = runCatching { provider.getCameraInfo(requestedSelector) }.getOrNull()
         val baseSelector = if (requestedInfo != null) {
@@ -225,7 +282,8 @@ class CameraSession(private val context: Context) : CameraRepository {
         val manager = extensionsManager
         val stillInfo = requestedInfo
             ?: runCatching { provider.getCameraInfo(baseSelector) }.getOrNull()
-        val useRaw = config.rawCapture && !config.slowMotion &&
+        // Dual photo always merges plain JPEGs — skip RAW and Ultra HDR / HEIC outputs.
+        val useRaw = config.rawCapture && !config.slowMotion && !config.dualPhoto &&
             stillInfo != null && stillInfo.supportsRawJpeg()
         val useExtension = !useRaw &&
             !config.slowMotion &&
@@ -310,7 +368,7 @@ class CameraSession(private val context: Context) : CameraRepository {
             info = runCatching { provider.getCameraInfo(selector) }.getOrNull()
                 ?: stillInfo
                 ?: provider.getCameraInfo(baseSelector),
-            ultraHdr = config.ultraHdr && !useRaw && !liveEffects,
+            ultraHdr = config.ultraHdr && !config.dualPhoto && !useRaw && !liveEffects,
             rawCapture = useRaw
         )
         stillFormat = resolved.second
@@ -366,6 +424,21 @@ class CameraSession(private val context: Context) : CameraRepository {
         }
         if (!includeVideo) videoCapture = null
 
+        if (config.dualPhoto) {
+            dualPhotoActive = true
+            dualPhotoSimultaneous = false
+            dualImageCapture = null
+            dualSecondaryLens = null
+            dualBaseHost = previewHost
+            dualBaseConfig = config
+            lastBoundKind = BoundSessionKind.DUAL_PHOTO
+        } else {
+            dualPhotoActive = false
+            dualBaseHost = null
+            dualBaseConfig = null
+            dualPhotoSequentialOnly = false
+        }
+
         return finishBind(
             config = config,
             slowMotionSupported = if (config.slowMotion) {
@@ -400,6 +473,185 @@ class CameraSession(private val context: Context) : CameraRepository {
         } else {
             takeStill(outputDirectory, lens, effect, onSaved, onError)
         }
+    }
+
+    /**
+     * Dual photo: stills from both lenses merged into one PiP JPEG. Captures simultaneously when
+     * the concurrent graph bound ([dualPhotoSimultaneous]); otherwise captures the primary,
+     * rebinds to the secondary lens, captures, and restores the primary (sequential tier).
+     * When one lens fails, saves the surviving still alone (single-camera fallback).
+     */
+    override suspend fun captureDualPhoto(
+        outputDirectory: File,
+        lens: CameraLens
+    ): Result<File> {
+        if (!dualPhotoActive) {
+            return Result.failure(IllegalStateException("Camera is not ready"))
+        }
+        val primaryLens = dualBaseConfig?.lens ?: lens
+        Logger.info(
+            TAG,
+            "Dual capture tier=${if (dualPhotoSimultaneous) "simultaneous" else "sequential"}"
+        )
+        return if (dualPhotoSimultaneous) {
+            captureDualSimultaneous(outputDirectory, primaryLens)
+        } else {
+            captureDualSequential(outputDirectory, primaryLens)
+        }
+    }
+
+    /** Decode bounds only (no pixels) for logging output sizes. */
+    private fun fileDims(file: File): String = runCatching {
+        val opts = android.graphics.BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
+        "${opts.outWidth}x${opts.outHeight}"
+    }.getOrDefault("?x?")
+
+    private suspend fun captureDualSimultaneous(
+        outputDirectory: File,
+        primaryLens: CameraLens
+    ): Result<File> {
+        val primaryCapture = imageCapture
+            ?: return Result.failure(IllegalStateException("Camera is not ready"))
+        val secondaryCapture = dualImageCapture
+            ?: return Result.failure(IllegalStateException("Camera is not ready"))
+        val secondaryLens = dualSecondaryLens ?: primaryLens.toggle()
+        val primaryFile = createFile(outputDirectory, Constants.FILE.PHOTO_EXTENSION)
+        val secondaryFile = createFile(outputDirectory, Constants.FILE.PHOTO_EXTENSION)
+        val (primaryResult, secondaryResult) = coroutineScope {
+            val primary = async { awaitStill(primaryCapture, primaryFile, primaryLens) }
+            val secondary = async { awaitStill(secondaryCapture, secondaryFile, secondaryLens) }
+            primary.await() to secondary.await()
+        }
+        return combineDualStills(outputDirectory, primaryResult, secondaryResult)
+    }
+
+    private suspend fun captureDualSequential(
+        outputDirectory: File,
+        primaryLens: CameraLens
+    ): Result<File> {
+        val host = dualBaseHost
+            ?: return captureBoundStill(outputDirectory, primaryLens)
+        val base = dualBaseConfig
+            ?: return captureBoundStill(outputDirectory, primaryLens)
+        val secondaryLens = primaryLens.toggle()
+        val primaryCapture = imageCapture
+            ?: return Result.failure(IllegalStateException("Camera is not ready"))
+        val primaryFile = createFile(outputDirectory, Constants.FILE.PHOTO_EXTENSION)
+        val primaryResult = awaitStill(primaryCapture, primaryFile, primaryLens)
+
+        // Rebind to the secondary lens for its still (bind keeps dualPhoto so stills stay plain JPEG).
+        val secondaryResult = runCatching {
+            bind(host, base.copy(lens = secondaryLens, cameraId = null))
+            val secondaryCapture = imageCapture
+                ?: throw IllegalStateException("Camera is not ready")
+            val secondaryFile = createFile(outputDirectory, Constants.FILE.PHOTO_EXTENSION)
+            awaitStill(secondaryCapture, secondaryFile, secondaryLens)
+        }.getOrElse { error ->
+            Logger.warning(TAG, "Dual sequential secondary capture failed: ${error.message}")
+            Result.failure(
+                error as? IllegalStateException ?: IllegalStateException(error.message ?: "Photo capture failed")
+            )
+        }
+
+        // Restore the primary session; keep dual state alive even if the restore bind fails.
+        val restored = runCatching {
+            bind(host, base.copy(lens = primaryLens))
+        }
+        restored.onFailure { error ->
+            Logger.error(TAG, "Dual sequential primary restore failed: ${error.message}")
+        }
+        dualPhotoActive = true
+        dualPhotoSimultaneous = false
+        dualBaseHost = host
+        dualBaseConfig = base
+        lastBoundKind = BoundSessionKind.DUAL_PHOTO
+
+        return combineDualStills(outputDirectory, primaryResult, secondaryResult)
+    }
+
+    private suspend fun captureBoundStill(outputDirectory: File, lens: CameraLens): Result<File> {
+        val capture = imageCapture
+            ?: return Result.failure(IllegalStateException("Camera is not ready"))
+        val file = createFile(outputDirectory, Constants.FILE.PHOTO_EXTENSION)
+        return awaitStill(capture, file, lens)
+    }
+
+    private suspend fun awaitStill(
+        capture: ImageCapture,
+        file: File,
+        lens: CameraLens
+    ): Result<File> = suspendCancellableCoroutine { continuation ->
+        val metadata = ImageCapture.Metadata().apply {
+            isReversedHorizontal = shouldMirrorFrontOutput(lens)
+        }
+        val options = ImageCapture.OutputFileOptions.Builder(file)
+            .setMetadata(metadata)
+            .build()
+        capture.takePicture(
+            options,
+            cameraExecutor,
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val saved = output.savedUri?.toFile() ?: file
+                    Logger.info(TAG, "Dual still ${saved.name} ${fileDims(saved)}")
+                    if (continuation.isActive) continuation.resume(Result.success(saved))
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    Logger.error(TAG, "Dual still failed: ${exception.message}")
+                    if (continuation.isActive) {
+                        continuation.resume(
+                            Result.failure(
+                                IllegalStateException(exception.message ?: "Photo capture failed")
+                            )
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    /** Merges both stills on [cameraExecutor]; on merge failure falls back to the primary alone. */
+    private suspend fun combineDualStills(
+        directory: File,
+        primary: Result<File>,
+        secondary: Result<File>
+    ): Result<File> {
+        val primaryFile = primary.getOrNull()
+        val secondaryFile = secondary.getOrNull()
+        if (primaryFile == null && secondaryFile == null) {
+            return Result.failure(
+                primary.exceptionOrNull() ?: IllegalStateException("Photo capture failed")
+            )
+        }
+        if (primaryFile == null) return secondary
+        if (secondaryFile == null) return primary
+        val merged = suspendCoroutine<File?> { continuation ->
+            cameraExecutor.execute {
+                var result: File? = null
+                try {
+                    val output = createFile(directory, Constants.FILE.PHOTO_EXTENSION)
+                    result = DualPhotoMerger.merge(primaryFile, secondaryFile, output, pipCorner, pipScale)
+                    if (result == null) output.delete()
+                } catch (error: Throwable) {
+                    Logger.error(TAG, "Dual merge failed: ${error.message}", error)
+                    result = null
+                }
+                if (result != null) {
+                    Logger.info(TAG, "Dual merged ${result.name} ${fileDims(result)}")
+                    primaryFile.delete()
+                    secondaryFile.delete()
+                } else {
+                    // Single-camera fallback: keep the primary frame only.
+                    secondaryFile.delete()
+                }
+                continuation.resume(result)
+            }
+        }
+        return Result.success(merged ?: primaryFile)
     }
 
     override fun startRecording(
@@ -478,8 +730,91 @@ class CameraSession(private val context: Context) : CameraRepository {
     override fun setFlash(mode: FlashMode) {
         flashMode = mode
         imageCapture?.flashMode = mode.toImageCaptureMode()
+        dualImageCapture?.flashMode = mode.toImageCaptureMode()
         applyTorch(mode)
         applyLowLightBoost()
+    }
+
+    override fun setPipCorner(corner: PipCorner) {
+        pipCorner = corner
+    }
+
+    override fun setPipScale(scale: Float) {
+        pipScale = scale
+    }
+
+    override fun setMotionRolling(enabled: Boolean) {
+        motionRollingRequested = enabled
+        if (enabled) ensureMotionRolling() else cancelMotionRolling()
+    }
+
+    /** Starts the rolling pre-roll clip when it is wanted and the recorder is idle. */
+    private fun ensureMotionRolling() {
+        if (!motionRollingRequested || motionAwaitingVideo || motionRollingActive) return
+        if (recording != null) return
+        if (videoCapture == null || imageCapture == null) return
+        startMotionRolling()
+    }
+
+    private fun startMotionRolling() {
+        prunePrerollDir()
+        val file = beginRecording(
+            outputDirectory = motionPrerollDir,
+            muted = true,
+            persistent = false,
+            emitEvents = false
+        ).getOrElse { error ->
+            Logger.warning(TAG, "Motion pre-roll failed: ${error.message}")
+            null
+        } ?: return
+        motionRollingFile = file
+        motionRollingStartedAt = SystemClock.elapsedRealtime()
+        motionRollingActive = true
+        scheduleMotionRollingRestart()
+    }
+
+    private fun scheduleMotionRollingRestart() {
+        mainHandler.removeCallbacks(motionRollingRestartRunnable)
+        mainHandler.postDelayed(motionRollingRestartRunnable, MOTION_ROLLING_RESTART_MS)
+    }
+
+    /** Bound-size restart: swap the rolling clip (only the last 1.5 s is ever used). */
+    private fun restartMotionRolling() {
+        if (!motionRollingRequested || !motionRollingActive || motionAwaitingVideo) return
+        if (recording == null) {
+            motionRollingActive = false
+            return
+        }
+        stopRollingRecording()
+        if (motionRollingRequested) startMotionRolling()
+    }
+
+    private fun stopRollingRecording() {
+        mainHandler.removeCallbacks(motionRollingRestartRunnable)
+        motionRollingActive = false
+        recording?.stop()
+        recording = null
+        motionRollingFile = null
+    }
+
+    /** Drops the rolling clip (rebind, release, motion off, or still-capture failure). */
+    private fun cancelMotionRolling() {
+        mainHandler.removeCallbacks(motionRollingRestartRunnable)
+        mainHandler.removeCallbacks(motionStopRunnable)
+        if (motionRollingActive) {
+            motionRollingActive = false
+            recording?.stop()
+            recording = null
+        }
+        motionRollingFile = null
+    }
+
+    /** Removes stale rolling clips (app cache; keeps the dir bounded). */
+    private fun prunePrerollDir() {
+        val cutoff = System.currentTimeMillis() - PREROLL_MAX_AGE_MS
+        motionPrerollDir.listFiles()?.forEach { file ->
+            if (file.lastModified() < cutoff) file.delete()
+        }
     }
 
     override fun setLowLightBoost(enabled: Boolean) {
@@ -521,6 +856,7 @@ class CameraSession(private val context: Context) : CameraRepository {
     override fun setTargetRotation(rotation: Int) {
         preview?.targetRotation = rotation
         imageCapture?.targetRotation = rotation
+        dualImageCapture?.targetRotation = rotation
         videoCapture?.targetRotation = rotation
         imageAnalysis?.targetRotation = rotation
     }
@@ -565,6 +901,7 @@ class CameraSession(private val context: Context) : CameraRepository {
     }
 
     override fun unbind() {
+        cancelMotionRolling()
         recording?.stop()
         recording = null
         camera?.cameraControl?.enableTorch(false)
@@ -579,6 +916,12 @@ class CameraSession(private val context: Context) : CameraRepository {
         fps60Active = false
         previewBoosted = false
         userExposureIndex = null
+        dualPhotoActive = false
+        dualPhotoSimultaneous = false
+        dualImageCapture = null
+        dualSecondaryLens = null
+        dualBaseHost = null
+        dualBaseConfig = null
         stopWatchingLowLightBoost()
         _lowLightBoost.value = LowLightBoost.OFF
         _nightScene.value = NightScene.UNKNOWN
@@ -773,10 +1116,55 @@ class CameraSession(private val context: Context) : CameraRepository {
             takeStill(outputDirectory, lens, effect, onSaved, onError)
             return
         }
+        val rolling = motionRollingFile
+            ?.takeIf { motionRollingActive && it.exists() && it.length() > 0L }
+        if (rolling == null) {
+            captureMotionPhotoNoPreroll(outputDirectory, lens, effect, onSaved, onError)
+            return
+        }
+        // Warm rolling clip: mark the shutter, keep recording, stop at +1.5 s, then trim
+        // [shutter - 1.5s, shutter + 1.5s] keyframe-aligned around the still.
         motionStill = null
         motionOnSaved = onSaved
         motionOnError = onError
         motionAwaitingVideo = true
+        motionVideoIsRolling = true
+        motionVideo = rolling
+        motionShutterAt = SystemClock.elapsedRealtime()
+        takeStill(
+            outputDirectory = outputDirectory,
+            lens = lens,
+            effect = effect,
+            onSaved = { file ->
+                motionStill = file
+                finishMotionIfReady()
+            },
+            onError = { message ->
+                mainHandler.removeCallbacks(motionStopRunnable)
+                cancelMotionRolling()
+                rolling.delete()
+                clearMotionCapture()
+                if (motionRollingRequested) ensureMotionRolling()
+                onError(message)
+            }
+        )
+        mainHandler.removeCallbacks(motionStopRunnable)
+        mainHandler.postDelayed(motionStopRunnable, MOTION_DURATION_MS)
+    }
+
+    /** Legacy path when no rolling clip is warm: record from the shutter for 1.5 s. */
+    private fun captureMotionPhotoNoPreroll(
+        outputDirectory: File,
+        lens: CameraLens,
+        effect: EffectMode,
+        onSaved: (File) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        motionStill = null
+        motionOnSaved = onSaved
+        motionOnError = onError
+        motionAwaitingVideo = true
+        motionVideoIsRolling = false
         val videoFile = beginRecording(
             outputDirectory = outputDirectory,
             muted = true,
@@ -813,28 +1201,78 @@ class CameraSession(private val context: Context) : CameraRepository {
         mainHandler.postDelayed({ stopRecording() }, MOTION_DURATION_MS)
     }
 
+    private fun stopMotionRollingForCapture() {
+        mainHandler.removeCallbacks(motionRollingRestartRunnable)
+        motionRollingActive = false
+        recording?.stop()
+        recording = null
+        motionRollingFile = null
+    }
+
     private fun finishMotionIfReady() {
         val still = motionStill ?: return
         if (motionAwaitingVideo) return
         val video = motionVideo
         val onSaved = motionOnSaved ?: return
+        val wasRolling = motionVideoIsRolling
+        val shutterAt = motionShutterAt
+        val rollingStartedAt = motionRollingStartedAt
         clearMotionCapture()
         cameraExecutor.execute {
-            val saved = if (video != null && video.exists() && video.length() > 0L) {
-                runCatching {
-                    val muxed = File(still.parentFile, still.nameWithoutExtension + "_motion.jpg")
-                    MotionPhotoMuxer.mux(still, video, muxed)
-                    still.delete()
-                    video.delete()
-                    muxed
-                }.getOrElse { error ->
-                    Logger.error(TAG, "Motion mux failed: ${error.message}")
-                    still
+            var saved = still
+            if (video != null && video.exists() && video.length() > 0L) {
+                var muxVideo = video
+                var presentationUs = 0L
+                var trimmed: MotionPhotoTrimmer.TrimmedClip? = null
+                if (wasRolling && rollingStartedAt > 0L && shutterAt > rollingStartedAt) {
+                    // Rolling clip spans [rollingStarted .. shutter + 1.5s]; keep the
+                    // 3 s live-photo window around the shutter (keyframe-aligned).
+                    val wallShutterMs = shutterAt - rollingStartedAt
+                    val windowStartMs = (wallShutterMs - MOTION_DURATION_MS).coerceAtLeast(0L)
+                    val windowEndMs = wallShutterMs + MOTION_DURATION_MS
+                    val trimOutput = File(motionPrerollDir, "trim_${System.nanoTime()}.mp4")
+                    trimmed = MotionPhotoTrimmer.trim(video, windowStartMs, windowEndMs, trimOutput)
+                    if (trimmed != null) {
+                        muxVideo = trimmed.file
+                        presentationUs = (wallShutterMs - trimmed.startMs) * 1000
+                    } else {
+                        presentationUs = wallShutterMs * 1000
+                    }
                 }
-            } else {
-                still
+                // Apple Live Photo first (JPEG MakerNote + .mov sibling, what Photos reads),
+                // then Android Motion Photo v1 as the fallback when the MOV write fails.
+                val live = runCatching {
+                    val identifier = AppleLivePhotoWriter.newIdentifier()
+                    val companion = AppleLivePhotoWriter.companionFor(still)
+                    if (AppleLivePhotoWriter.writeVideo(muxVideo, companion, identifier)) {
+                        AppleLivePhotoWriter.attachIdentifier(still, identifier)
+                        true
+                    } else {
+                        companion.delete()
+                        false
+                    }
+                }.getOrDefault(false)
+                if (live) {
+                    saved = still
+                } else {
+                    val muxResult = runCatching {
+                        val muxed = File(still.parentFile, still.nameWithoutExtension + "_motion.jpg")
+                        MotionPhotoMuxer.mux(still, muxVideo, muxed, presentationUs)
+                        still.delete()
+                        muxed
+                    }
+                    muxResult.onSuccess { muxed -> saved = muxed }
+                    muxResult.onFailure { error ->
+                        Logger.error(TAG, "Motion mux failed: ${error.message}", error)
+                    }
+                }
+                video.delete()
+                trimmed?.file?.delete()
             }
-            mainHandler.post { onSaved(saved) }
+            mainHandler.post {
+                onSaved(saved)
+                if (motionRollingRequested) ensureMotionRolling()
+            }
         }
     }
 
@@ -844,6 +1282,7 @@ class CameraSession(private val context: Context) : CameraRepository {
         motionOnSaved = null
         motionOnError = null
         motionAwaitingVideo = false
+        motionVideoIsRolling = false
     }
 
     @OptIn(ExperimentalCamera2Interop::class)
@@ -1109,10 +1548,11 @@ class CameraSession(private val context: Context) : CameraRepository {
         val shared = sharedBuilder.build()
         val backComposition = CompositionSettings.DEFAULT
         // NDC: origin center, +X right, +Y up. Equal scale avoids squashing the front stream.
+        val (pipNdcX, pipNdcY) = DualComposition.pipCenterNdc(pipCorner)
         val frontComposition = CompositionSettings.Builder()
             .setAlpha(1f)
-            .setOffset(DualComposition.PIP_OFFSET_X, DualComposition.PIP_OFFSET_Y)
-            .setScale(DualComposition.PIP_SCALE, DualComposition.PIP_SCALE)
+            .setOffset(pipNdcX, pipNdcY)
+            .setScale(DualComposition.PIP_SCALE * pipScale, DualComposition.PIP_SCALE * pipScale)
             .build()
         val configs = listOf(
             SingleCameraConfig(
@@ -1158,6 +1598,120 @@ class CameraSession(private val context: Context) : CameraRepository {
             slowMotionSupported = isHighSpeedSupported(camera?.cameraInfo),
             slowMotionFps = 0
         )
+    }
+
+    /**
+     * Simultaneous Dual photo tier: non-composition [androidx.camera.core.ConcurrentCamera] —
+     * each camera gets its own UseCaseGroup (primary Preview + ImageCapture, secondary
+     * ImageCapture only), because the shared-stream composition mode cannot bind ImageCapture.
+     * Returns false when the device has no concurrent front+back pair, the graph failed once
+     * before ([dualPhotoSequentialOnly]), or the bind throws; caller uses the sequential tier.
+     */
+    private fun bindDualPhoto(
+        provider: ProcessCameraProvider,
+        host: PreviewViewHost,
+        config: CameraBindConfig,
+        rotation: Int
+    ): Boolean {
+        if (dualPhotoSequentialOnly) return false
+        val group = provider.concurrentFrontBackGroup()?.takeIf { isDualCameraSupported(context, provider) }
+        if (group == null) {
+            dualPhotoSequentialOnly = true
+            return false
+        }
+        val backInfo = group.firstOrNull { info ->
+            info.lensFacing == CameraSelector.LENS_FACING_BACK
+        }
+        val frontInfo = group.firstOrNull { info ->
+            info.lensFacing == CameraSelector.LENS_FACING_FRONT
+        }
+        if (backInfo == null || frontInfo == null) {
+            dualPhotoSequentialOnly = true
+            return false
+        }
+        val frontPrimary = config.lens == CameraLens.FRONT
+        val primaryInfo = if (frontPrimary) frontInfo else backInfo
+        val secondaryInfo = if (frontPrimary) backInfo else frontInfo
+
+        val previewUseCase = Preview.Builder()
+            .setTargetRotation(rotation)
+            .setResolutionSelector(config.captureAspect.toResolutionSelector())
+            .build()
+            .also { it.surfaceProvider = host.previewView.surfaceProvider }
+        val primaryCapture = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setFlashMode(config.flash.toImageCaptureMode())
+            .setTargetRotation(rotation)
+            .setResolutionSelector(config.captureAspect.toResolutionSelector())
+            .build()
+        val secondaryCapture = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setFlashMode(config.flash.toImageCaptureMode())
+            .setTargetRotation(rotation)
+            .setResolutionSelector(config.captureAspect.toResolutionSelector())
+            .build()
+        val primaryGroup = UseCaseGroup.Builder()
+            .addUseCase(previewUseCase)
+            .addUseCase(primaryCapture)
+            .also { builder -> host.previewView.viewPort?.let { builder.setViewPort(it) } }
+            .build()
+        val secondaryGroup = UseCaseGroup.Builder()
+            .addUseCase(secondaryCapture)
+            .build()
+        val configs = listOf(
+            SingleCameraConfig(
+                primaryInfo.toConcurrentSelector(),
+                primaryGroup,
+                CompositionSettings.DEFAULT,
+                host.lifecycleOwner
+            ),
+            SingleCameraConfig(
+                secondaryInfo.toConcurrentSelector(),
+                secondaryGroup,
+                CompositionSettings.DEFAULT,
+                host.lifecycleOwner
+            )
+        )
+
+        return try {
+            provider.unbindAll()
+            val concurrent = provider.bindToLifecycle(configs)
+            val boundPrimary = concurrent.cameras.firstOrNull { bound ->
+                bound.cameraInfo.lensFacing ==
+                    (if (frontPrimary) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK)
+            } ?: throw IllegalStateException("Dual photo bound no primary camera")
+            camera = boundPrimary
+            preview = previewUseCase
+            imageCapture = primaryCapture
+            dualImageCapture = secondaryCapture
+            dualSecondaryLens = if (frontPrimary) CameraLens.BACK else CameraLens.FRONT
+            dualPhotoSimultaneous = true
+            videoCapture = null
+            fps60Active = false
+            stillFormat = StillFormat.JPEG
+            lastBoundKind = BoundSessionKind.DUAL_PHOTO
+            lastBoundExtension = CameraExtension.NONE
+            lastRawFullSensor = false
+            lastStillsOnlyFallback = false
+            Logger.debug(
+                TAG,
+                "Bound dual photo simultaneously: primary=${config.lens} secondary=$dualSecondaryLens"
+            )
+            true
+        } catch (error: Exception) {
+            Logger.warning(
+                TAG,
+                "Dual photo simultaneous bind failed: ${error.message}; using sequential capture"
+            )
+            provider.unbindAll()
+            preview = null
+            imageCapture = null
+            dualImageCapture = null
+            dualSecondaryLens = null
+            dualPhotoSimultaneous = false
+            dualPhotoSequentialOnly = true
+            false
+        }
     }
 
     @OptIn(ExperimentalCamera2Interop::class)
@@ -1334,6 +1888,10 @@ class CameraSession(private val context: Context) : CameraRepository {
             concurrentSupported = cameraProvider?.let { provider ->
                 isDualCameraSupported(context, provider)
             } == true,
+            dualPhotoSupported = cameraProvider?.availableCameraInfos?.let { infos ->
+                infos.any { info -> info.lensFacing == CameraSelector.LENS_FACING_BACK } &&
+                    infos.any { info -> info.lensFacing == CameraSelector.LENS_FACING_FRONT }
+            } == true,
             videoFps60Supported = info?.cachedVideoFps60() == true,
             videoFps60Active = fps60Active,
             session = BoundSession(
@@ -1369,6 +1927,10 @@ class CameraSession(private val context: Context) : CameraRepository {
         applyTorch(config.flash)
         watchLowLightBoost()
         applyLowLightBoost()
+        // Rolling motion pre-roll starts only after the new use cases are live.
+        if (motionRollingRequested && !motionAwaitingVideo) {
+            mainHandler.post { ensureMotionRolling() }
+        }
         return toBindResult(config, slowMotionSupported, slowMotionFps)
     }
 
@@ -1457,6 +2019,10 @@ class CameraSession(private val context: Context) : CameraRepository {
     companion object {
         private const val TAG = "CameraSession"
         private const val MOTION_DURATION_MS = 1_500L
+        /** Rolling pre-roll clip restart cadence (bounds cache size; only last 1.5 s used). */
+        private const val MOTION_ROLLING_RESTART_MS = 20_000L
+        /** Stale rolling clips older than this are pruned from the app cache. */
+        private const val PREROLL_MAX_AGE_MS = 60_000L
         /** Cap decoded still edge length when applying color effects. */
         private const val MAX_STILL_EDGE = 8192
         /** Reserve 100 MB of free space when setting recording file size limits. */

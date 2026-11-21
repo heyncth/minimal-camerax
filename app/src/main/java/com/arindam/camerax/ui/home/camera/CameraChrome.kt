@@ -2,29 +2,24 @@ package com.arindam.camerax.ui.home.camera
 
 import android.media.MediaMetadataRetriever
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,444 +28,156 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemGestures
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.Exposure
 import androidx.compose.material.icons.filled.FlashAuto
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.FlashlightOn
-import androidx.compose.material.icons.filled.GridOff
-import androidx.compose.material.icons.filled.GridOn
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.MotionPhotosOff
-import androidx.compose.material.icons.filled.MotionPhotosOn
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Timer3
 import androidx.compose.material.icons.filled.TimerOff
-import androidx.compose.material3.ripple
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.withContext
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.arindam.camerax.R
 import com.arindam.camerax.domain.model.CameraMode
 import com.arindam.camerax.domain.model.CaptureAction
-import com.arindam.camerax.domain.model.EffectMode
-import com.arindam.camerax.domain.model.ExposurePriority
 import com.arindam.camerax.domain.model.FlashMode
-import com.arindam.camerax.domain.model.NightScene
-import com.arindam.camerax.domain.model.StillFormat
 import com.arindam.camerax.domain.model.TimerMode
-import com.arindam.camerax.domain.model.VideoHdrRange
-import com.arindam.camerax.ui.compose.CameraGlassButton
-import com.arindam.camerax.ui.theme.CameraAccent
-import com.arindam.camerax.ui.theme.CameraDanger
-import com.arindam.camerax.ui.theme.CameraFontFamily
-import com.arindam.camerax.ui.theme.CameraGlass
-import com.arindam.camerax.ui.theme.CameraGlassStrong
-import com.arindam.camerax.ui.theme.CameraMono
-import com.arindam.camerax.ui.theme.CameraOnGlass
-import com.arindam.camerax.ui.theme.CameraOnGlassMuted
-import com.arindam.camerax.ui.theme.themedOverlayChrome
 import java.io.File
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
- * Overlay chrome (header, HUD, zoom, footer). Visibility flags come from
+ * Presentation: iPhone-style camera chrome. No glass, no accent colour, no technical badges —
+ * one top row, a mode strip, zoom pills and the shutter. Visibility flags come from
  * [com.arindam.camerax.domain.model.CameraModeProfile] via [CameraUiState].
  */
+
+private val IphoneYellow = Color(0xFFFFD60A)
+private val ChromeWhite = Color.White
+private val ChromeInactive = Color.White.copy(alpha = 0.72f)
+private val ShutterRed = Color(0xFFFF3B30)
+
+/** Top row: flash, DUAL / LIVE / timer chips and the settings gear. Recording shows elapsed time. */
 @Composable
 fun CameraHeader(
     state: CameraUiState,
     compact: Boolean = false,
     onFlashClicked: () -> Unit,
     onTimerClicked: () -> Unit,
-    onGridClicked: () -> Unit,
-    onMotionClicked: () -> Unit,
-    onSettingsClicked: () -> Unit,
-    onExposurePrioritySelected: (ExposurePriority) -> Unit = {},
-    onIsoChanged: (Int) -> Unit = {},
-    onShutterChanged: (Long) -> Unit = {},
-    onCompensationChanged: (Int) -> Unit = {}
+    onLiveClicked: () -> Unit,
+    onDualPhotoClicked: () -> Unit,
+    onSettingsClicked: () -> Unit
 ) {
-    var exposureOpen by remember { mutableStateOf(false) }
-    val chrome = if (state.showsTools) themedOverlayChrome() else null
-    LaunchedEffect(state.showsExposureControls) {
-        if (!state.showsExposureControls) exposureOpen = false
-    }
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    if (chrome != null) {
-                        listOf(chrome.canvas, Color.Transparent)
-                    } else {
-                        listOf(Color.Black.copy(alpha = 0.28f), Color.Transparent)
-                    }
-                )
-            )
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Top + WindowInsetsSides.Horizontal
                 )
             )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {}
-            )
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 8.dp)
+            .height(if (compact) 40.dp else 44.dp),
+        contentAlignment = Alignment.Center
     ) {
+        if (state.isRecording) {
+            RecordingIndicator(state.recordingNanos)
+        } else {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                val hasQuickActions = state.showsFlash ||
-                    state.showsTimer ||
-                    state.showsGrid ||
-                    state.showsMotion ||
-                    state.showsExposureControls
-                if (hasQuickActions) {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(28.dp))
-                            .background(CameraGlassStrong)
-                            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(28.dp))
-                            .padding(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
                 if (state.showsFlash) {
-                    GlassIconButton(
+                    HeaderIcon(
                         icon = flashIcon(state.flash),
-                        contentDescription = stringResource(state.flash.labelRes),
-                        selected = state.flash != FlashMode.OFF,
-                        compact = compact,
-                        embedded = true,
-                        tooltip = true,
+                        description = stringResource(state.flash.labelRes),
+                        active = state.flash != FlashMode.OFF,
                         onClick = onFlashClicked
                     )
-                }
-                if (state.showsTimer) {
-                    GlassIconButton(
-                        icon = timerIcon(state.timer),
-                        contentDescription = stringResource(state.timer.labelRes),
-                        selected = state.timer != TimerMode.OFF,
-                        compact = compact,
-                        embedded = true,
-                        tooltip = true,
-                        onClick = onTimerClicked
-                    )
-                }
-                if (state.showsGrid) {
-                    GlassIconButton(
-                        icon = if (state.gridEnabled) Icons.Filled.GridOn else Icons.Filled.GridOff,
-                        contentDescription = stringResource(
-                            if (state.gridEnabled) R.string.grid_on else R.string.grid_off
-                        ),
-                        selected = state.gridEnabled,
-                        compact = compact,
-                        embedded = true,
-                        tooltip = true,
-                        onClick = onGridClicked
-                    )
-                }
-                if (state.showsMotion) {
-                    GlassIconButton(
-                        icon = if (state.motionPhotoEnabled) {
-                            Icons.Filled.MotionPhotosOn
-                        } else {
-                            Icons.Filled.MotionPhotosOff
-                        },
-                        contentDescription = stringResource(
-                            if (state.motionPhotoEnabled) R.string.motion_photo_on else R.string.motion_photo_off
-                        ),
-                        selected = state.motionPhotoEnabled,
-                        compact = compact,
-                        embedded = true,
-                        tooltip = true,
-                        onClick = onMotionClicked
-                    )
-                }
-                if (state.showsExposureControls) {
-                    val exposureActive = exposureOpen ||
-                        state.exposurePriority != ExposurePriority.AUTO ||
-                        state.exposureCompensation != 0
-                    GlassIconButton(
-                        icon = Icons.Filled.Exposure,
-                        contentDescription = stringResource(R.string.exposure_button),
-                        selected = exposureActive,
-                        compact = compact,
-                        embedded = true,
-                        tooltip = true,
-                        onClick = { exposureOpen = !exposureOpen }
-                    )
-                }
-                    }
                 } else {
-                    Spacer(Modifier.size(1.dp))
+                    Spacer(Modifier.width(44.dp))
                 }
-                AnimatedVisibility(
-                    visible = !state.isRecording && !state.panoramaActive,
-                    enter = fadeIn(tween(280)),
-                    exit = fadeOut(tween(220))
-                ) {
-                    GlassIconButton(
-                        icon = Icons.Filled.Settings,
-                        contentDescription = stringResource(R.string.settings),
-                        compact = compact,
-                        tooltip = true,
-                        onGlass = chrome?.onGlass,
-                        glass = chrome?.glass,
-                        stroke = chrome?.stroke,
-                        onClick = onSettingsClicked
-                    )
-                }
-            }
-        if (exposureOpen && state.showsExposureControls) {
-            ExposureControls(
-                state = state,
-                compact = compact,
-                onPrioritySelected = onExposurePrioritySelected,
-                onIsoChanged = onIsoChanged,
-                onShutterChanged = onShutterChanged,
-                onCompensationChanged = onCompensationChanged
-            )
-        }
-    }
-}
-
-@Composable
-fun RecordingHud(
-    state: CameraUiState,
-    compact: Boolean = false,
-    onPauseClicked: () -> Unit,
-    onMuteClicked: () -> Unit
-) {
-    AnimatedVisibility(
-        visible = state.isRecording,
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
-        val pulse by rememberInfiniteTransition(label = "rec").animateFloat(
-            initialValue = 0.55f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
-            label = "recPulse"
-        )
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(CameraGlassStrong)
-                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(28.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Canvas(Modifier.size(8.dp)) {
-                    drawCircle(CameraDanger.copy(alpha = if (state.isPaused) 0.4f else pulse))
-                }
-                Text(
-                    text = if (state.isPaused) {
-                        stringResource(R.string.recording_paused)
-                    } else {
-                        val time = formatRecordingTime(state.recordingNanos)
-                        if (state.recordingSizeBytes > 0L) {
-                            "$time · ${formatFileSize(state.recordingSizeBytes)}"
-                        } else {
-                            time
-                        }
-                    },
-                    color = CameraOnGlass,
-                    fontFamily = CameraMono,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp
-                )
-            }
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(CameraGlassStrong)
-                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(28.dp))
-                    .padding(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                GlassIconButton(
-                    icon = if (state.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                    contentDescription = stringResource(
-                        if (state.isPaused) R.string.resume_recording else R.string.pause_recording
-                    ),
-                    selected = state.isPaused,
-                    compact = compact,
-                    embedded = true,
-                    tooltip = true,
-                    onClick = onPauseClicked
-                )
-                if (state.showsAudioMuteControl) {
-                    val micMuted = state.isMuted || !state.microphonePermissionGranted
-                    GlassIconButton(
-                        icon = if (micMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
-                        contentDescription = stringResource(
-                            when {
-                                !state.microphonePermissionGranted -> R.string.permission_mic_enable
-                                micMuted -> R.string.unmute_audio
-                                else -> R.string.mute_audio
+                Spacer(Modifier.weight(1f))
+                if (state.showsDualPhotoToggle) {
+                    HeaderText(
+                        text = stringResource(R.string.dual_label),
+                        description = stringResource(
+                            if (state.mode == CameraMode.DUAL_PHOTO) {
+                                R.string.dual_photo_on
+                            } else {
+                                R.string.dual_photo_off
                             }
                         ),
-                        selected = micMuted,
-                        compact = compact,
-                        embedded = true,
-                        tooltip = true,
-                        onClick = onMuteClicked
+                        active = state.mode == CameraMode.DUAL_PHOTO,
+                        onClick = onDualPhotoClicked
                     )
+                    Spacer(Modifier.width(16.dp))
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun LiveStatusStrip(state: CameraUiState) {
-    val chips = buildList {
-        if (state.showsStillBadge) {
-            add(
-                when {
-                    state.stillFormat == StillFormat.RAW_JPEG -> stringResource(R.string.raw_dng)
-                    state.stillFormat == StillFormat.HEIC_ULTRA_HDR ->
-                        stringResource(R.string.ultrahdr_heic)
-                    else -> stringResource(R.string.ultrahdr)
+                if (state.showsMotion) {
+                    HeaderText(
+                        text = stringResource(R.string.live_label),
+                        description = stringResource(
+                            if (state.motionPhotoEnabled) {
+                                R.string.motion_photo_on
+                            } else {
+                                R.string.motion_photo_off
+                            }
+                        ),
+                        active = state.motionPhotoEnabled,
+                        onClick = onLiveClicked
+                    )
+                    Spacer(Modifier.width(16.dp))
                 }
-            )
-        }
-        if (state.showsNightHint && state.autoNightActive) add(stringResource(R.string.night_mode_active))
-        else if (state.showsNightHint && state.nightScene == NightScene.RECOMMENDED) {
-            add(stringResource(R.string.night_mode_recommended))
-        }
-        if (state.showsPip) add(stringResource(R.string.dual_live_hint))
-        if (state.captureAction == CaptureAction.PANORAMA) {
-            add(
-                if (state.panoramaActive) {
-                    stringResource(R.string.panorama_panning, state.panoramaFrames.size)
-                } else {
-                    stringResource(R.string.panorama_hint)
+                if (state.showsTimer) {
+                    HeaderIcon(
+                        icon = timerIcon(state.timer),
+                        description = stringResource(state.timer.labelRes),
+                        active = state.timer != TimerMode.OFF,
+                        onClick = onTimerClicked
+                    )
+                    Spacer(Modifier.width(4.dp))
                 }
-            )
-        }
-        if (state.showsSlowMotionFps &&
-            state.slowMotionSupported &&
-            state.slowMotionFps > 0
-        ) {
-            add(stringResource(R.string.slow_motion_fps, state.slowMotionFps))
-        }
-        if (state.showsVideoStatus && state.videoStabilizationActive) {
-            add(stringResource(R.string.video_stabilization_on))
-        }
-        when (state.videoHdrBound) {
-            VideoHdrRange.HLG10 ->
-                if (state.showsVideoStatus) add(stringResource(R.string.video_hdr_hlg))
-            VideoHdrRange.HDR10 ->
-                if (state.showsVideoStatus) add(stringResource(R.string.video_hdr_hdr10))
-            VideoHdrRange.HDR10_PLUS ->
-                if (state.showsVideoStatus) add(stringResource(R.string.video_hdr_hdr10_plus))
-            VideoHdrRange.DOLBY_VISION ->
-                if (state.showsVideoStatus) add(stringResource(R.string.video_hdr_dolby))
-            VideoHdrRange.SDR -> Unit
-        }
-        if (state.videoFps60Active && state.showsVideoStatus) {
-            add(stringResource(R.string.video_fps_60_on))
-        }
-        if (state.lowLightBoostActive && state.showsLowLightBoost) {
-            add(stringResource(R.string.low_light_boost_on))
-        }
-    }
-    AnimatedVisibility(
-        visible = chips.isNotEmpty(),
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .horizontalScroll(rememberScrollState())
-                .clip(RoundedCornerShape(20.dp))
-                .background(CameraGlassStrong)
-                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            chips.forEach { label ->
-                Text(
-                    text = label,
-                    color = CameraAccent,
-                    fontFamily = CameraMono,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                HeaderIcon(
+                    icon = Icons.Filled.Settings,
+                    description = stringResource(R.string.settings),
+                    active = false,
+                    onClick = onSettingsClicked
                 )
             }
         }
@@ -478,320 +185,84 @@ fun LiveStatusStrip(state: CameraUiState) {
 }
 
 @Composable
-fun ExposureControls(
-    state: CameraUiState,
-    compact: Boolean = false,
-    onPrioritySelected: (ExposurePriority) -> Unit,
-    onIsoChanged: (Int) -> Unit,
-    onShutterChanged: (Long) -> Unit,
-    onCompensationChanged: (Int) -> Unit
+private fun HeaderIcon(
+    icon: ImageVector,
+    description: String,
+    active: Boolean,
+    onClick: () -> Unit
 ) {
-    val limits = state.exposureLimits
-    val showHybrid = limits.supportedPriorities.size >= 2
-    val showEv = limits.evSupported && limits.evMax > limits.evMin
-    if (!showHybrid && !showEv) return
-
-    val panelShape = RoundedCornerShape(18.dp)
-    val sliderColors = SliderDefaults.colors(
-        thumbColor = CameraAccent,
-        activeTrackColor = CameraAccent,
-        inactiveTrackColor = Color.White.copy(alpha = 0.18f),
-        activeTickColor = Color.Transparent,
-        inactiveTickColor = Color.Transparent
-    )
-    val horizontalPad = if (compact) 12.dp else 14.dp
-    val verticalPad = if (compact) 10.dp else 12.dp
-
-    Column(
+    Box(
         modifier = Modifier
-            .fillMaxWidth(if (compact) 0.92f else 0.86f)
-            .padding(top = 8.dp)
-            .clip(panelShape)
-            .background(CameraGlassStrong)
-            .border(1.dp, Color.White.copy(alpha = 0.12f), panelShape)
-            .padding(horizontal = horizontalPad, vertical = verticalPad),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.exposure_panel_title).uppercase(),
-            color = CameraOnGlassMuted,
-            fontFamily = CameraMono,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 10.sp,
-            letterSpacing = 1.2.sp,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center
-        )
-
-        if (showHybrid) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.06f))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-            ) {
-                limits.supportedPriorities.forEach { priority ->
-                    val selected = state.exposurePriority == priority
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (selected) CameraAccent.copy(alpha = 0.92f) else Color.Transparent)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(bounded = true),
-                                onClick = { onPrioritySelected(priority) }
-                            )
-                            .padding(vertical = if (compact) 8.dp else 9.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(priority.labelRes),
-                            color = if (selected) Color.Black else CameraOnGlass,
-                            fontFamily = CameraMono,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = if (compact) 11.sp else 12.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(
-                visible = state.exposurePriority == ExposurePriority.ISO,
-                enter = fadeIn(tween(160)) + expandVertically(tween(180)),
-                exit = fadeOut(tween(120)) + shrinkVertically(tween(140))
-            ) {
-                ExposureMeterRow(
-                    label = stringResource(R.string.ae_iso),
-                    value = stringResource(R.string.iso_value, state.iso),
-                    compact = compact
-                ) {
-                    Slider(
-                        value = state.iso.toFloat(),
-                        onValueChange = { onIsoChanged(it.toInt()) },
-                        valueRange = limits.isoMin.toFloat()..limits.isoMax.toFloat(),
-                        colors = sliderColors,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-
-            AnimatedVisibility(
-                visible = state.exposurePriority == ExposurePriority.SHUTTER,
-                enter = fadeIn(tween(160)) + expandVertically(tween(180)),
-                exit = fadeOut(tween(120)) + shrinkVertically(tween(140))
-            ) {
-                ExposureMeterRow(
-                    label = stringResource(R.string.ae_shutter),
-                    value = shutterLabel(state.shutterNanos),
-                    compact = compact
-                ) {
-                    Slider(
-                        value = state.shutterNanos.toFloat(),
-                        onValueChange = { onShutterChanged(it.toLong()) },
-                        valueRange = limits.shutterMinNanos.toFloat()..limits.shutterMaxNanos.toFloat(),
-                        colors = sliderColors,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        }
-
-        if (showEv) {
-            val ev = state.exposureCompensation * limits.evStep
-            val evLabel = when {
-                ev > 0.05f -> "+%.1f".format(ev)
-                ev < -0.05f -> "%.1f".format(ev)
-                else -> "0.0"
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.exposure_ev_minus),
-                        color = CameraOnGlassMuted,
-                        fontFamily = CameraMono,
-                        fontSize = 14.sp,
-                        modifier = Modifier.width(18.dp),
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = stringResource(R.string.exposure_ev, evLabel),
-                        color = if (state.exposureCompensation == 0) CameraOnGlass else CameraAccent,
-                        fontFamily = CameraMono,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = if (compact) 12.sp else 13.sp,
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = stringResource(R.string.exposure_ev_plus),
-                        color = CameraOnGlassMuted,
-                        fontFamily = CameraMono,
-                        fontSize = 14.sp,
-                        modifier = Modifier.width(18.dp),
-                        textAlign = TextAlign.Center
-                    )
-                }
-                Slider(
-                    value = state.exposureCompensation.toFloat(),
-                    onValueChange = { onCompensationChanged(it.toInt()) },
-                    valueRange = limits.evMin.toFloat()..limits.evMax.toFloat(),
-                    steps = (limits.evMax - limits.evMin - 1).coerceAtLeast(0),
-                    colors = sliderColors,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExposureMeterRow(
-    label: String,
-    value: String,
-    compact: Boolean,
-    slider: @Composable () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                color = CameraOnGlassMuted,
-                fontFamily = CameraMono,
-                fontWeight = FontWeight.Medium,
-                fontSize = 10.sp,
-                letterSpacing = 0.8.sp
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = value,
-                color = CameraAccent,
-                fontFamily = CameraMono,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = if (compact) 12.sp else 13.sp
-            )
-        }
-        slider()
-    }
-}
-
-private fun shutterLabel(nanos: Long): String {
-    if (nanos <= 0L) return "—"
-    val seconds = nanos / 1_000_000_000.0
-    return if (seconds >= 1.0) {
-        String.format("%.1fs", seconds)
-    } else {
-        "1/%d".format((1.0 / seconds).toInt().coerceAtLeast(1))
-    }
-}
-
-
-@Composable
-fun ZoomChips(
-    state: CameraUiState,
-    onZoomSelected: (Float) -> Unit
-) {
-    if (!state.showsZoomChips || state.zoomChips.size < 2) return
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(28.dp))
-            .background(CameraGlassStrong)
-            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(28.dp))
-            // Keep preview pinch/drag gestures from stealing taps on the chip row.
+            .minimumInteractiveComponentSize()
+            .size(44.dp)
+            .clip(CircleShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = {}
+                onClick = onClick
             )
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center
     ) {
-        state.zoomChips.forEach { ratio ->
-            val selected = kotlin.math.abs(state.activeZoomChip - ratio) < 0.12f
-            val label = when {
-                ratio < 1f -> {
-                    val formatted = String.format(java.util.Locale.US, "%.1f", ratio)
-                    if (formatted.startsWith("0.")) ".${formatted.substring(2)}×" else "${formatted}×"
-                }
-                ratio % 1.0f == 0.0f -> "${ratio.toInt()}×"
-                else -> String.format(java.util.Locale.US, "%.1f×", ratio)
-            }
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (selected) CameraAccent else Color.White.copy(alpha = 0.08f)
-                    )
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = ripple(bounded = true),
-                        onClick = { onZoomSelected(ratio) }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = label,
-                    color = if (selected) Color.Black else CameraOnGlass,
-                    fontFamily = CameraMono,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = if (ratio < 1f) 11.sp else 12.sp
-                )
-            }
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (active) IphoneYellow else ChromeWhite,
+            modifier = Modifier.size(21.dp)
+        )
     }
 }
 
 @Composable
-fun EffectsFilmstrip(
-    state: CameraUiState,
-    onEffectSelected: (EffectMode) -> Unit
+private fun HeaderText(
+    text: String,
+    description: String,
+    active: Boolean,
+    onClick: () -> Unit
 ) {
-    val itemWidth = 72.dp
-    AnimatedVisibility(visible = state.showsEffects && !state.isRecording) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-        ) {
-            val edgeInset = ((maxWidth - itemWidth) / 2).coerceAtLeast(0.dp)
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                Spacer(Modifier.width(edgeInset))
-                EffectMode.entries.forEachIndexed { index, effect ->
-                    if (index > 0) Spacer(Modifier.width(8.dp))
-                    EffectThumb(
-                        effect = effect,
-                        selected = state.effect == effect,
-                        onClick = { onEffectSelected(effect) },
-                        modifier = Modifier.width(itemWidth)
-                    )
-                }
-                Spacer(Modifier.width(edgeInset))
-            }
-        }
+    Box(
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .height(44.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (active) IphoneYellow else ChromeWhite,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.2.sp
+        )
     }
 }
 
-private fun cameraFooterBottomPadding(compact: Boolean) = if (compact) 8.dp else 14.dp
+@Composable
+private fun RecordingIndicator(nanos: Long) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(ShutterRed)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = formatRecordingTime(nanos),
+            color = ChromeWhite,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
 
-private fun modePagerHeight(compact: Boolean) = if (compact) 32.dp else 40.dp
-
-private fun modePagerAfterGap(compact: Boolean) = if (compact) 8.dp else 10.dp
-
-/** Pager row plus footer padding; pair with bottom [WindowInsets] on Others. */
-internal fun othersFooterContentClearance(compact: Boolean): Dp =
-    modePagerHeight(compact) + modePagerAfterGap(compact) +
-        cameraFooterBottomPadding(compact) + 12.dp
-
+/** Bottom chrome: zoom pills, PHOTO · VIDEO strip, gallery / shutter / flip row. */
 @Composable
 fun CameraFooter(
     state: CameraUiState,
@@ -800,144 +271,127 @@ fun CameraFooter(
     onFlipClicked: () -> Unit,
     onShutterClicked: () -> Unit,
     onGalleryClicked: () -> Unit,
-    onEffectSelected: (EffectMode) -> Unit,
-    onZoomSelected: (Float) -> Unit = {}
+    onZoomSelected: (Float) -> Unit
 ) {
-    val chrome = if (state.showsTools) themedOverlayChrome() else null
-    val idleModeColor = chrome?.muted ?: CameraOnGlassMuted
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    if (chrome != null) {
-                        listOf(Color.Transparent, chrome.canvas)
-                    } else {
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.42f))
-                    }
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.union(WindowInsets.systemGestures).only(
+                    WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
                 )
             )
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing
-                    .union(WindowInsets.systemGestures)
-                    .only(WindowInsetsSides.Bottom)
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {}
-            )
-            .padding(bottom = cameraFooterBottomPadding(compact)),
+            .padding(start = 20.dp, end = 20.dp, bottom = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        ZoomChips(state = state, onZoomSelected = onZoomSelected)
         if (state.showsZoomChips && state.zoomChips.size >= 2) {
-            Spacer(Modifier.height(10.dp))
-        }
-        if (!state.lockCaptureMode) {
-            EffectsFilmstrip(
-                state = state,
-                onEffectSelected = onEffectSelected
+            ZoomPills(
+                chips = state.zoomChips,
+                active = state.activeZoomChip,
+                onZoomSelected = onZoomSelected
             )
-            AnimatedVisibility(
-                visible = !state.isRecording && !state.panoramaActive,
-                enter = fadeIn(tween(280)) + expandVertically(tween(320)),
-                exit = fadeOut(tween(220)) + shrinkVertically(tween(280))
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    val modes = state.visibleModes
-                    key(state.slowMotionSupported, state.concurrentSupported) {
-                        DiscretePager(
-                            items = modes,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(modePagerHeight(compact)),
-                            itemWidth = 96.dp,
-                            itemSpacing = 0.dp,
-                            overshootFraction = 0.55f,
-                            initialIndex = modes.indexOf(state.mode).coerceAtLeast(0),
-                            onItemSelected = onModeSelected
-                        ) { item, selected ->
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = stringResource(item.labelRes).uppercase(),
-                                    color = if (selected) CameraAccent else idleModeColor,
-                                    fontFamily = CameraFontFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = if (compact) 12.sp else 13.sp,
-                                    letterSpacing = 0.6.sp,
-                                    maxLines = 1
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .width(18.dp)
-                                        .height(2.dp)
-                                        .clip(RoundedCornerShape(1.dp))
-                                        .background(if (selected) CameraAccent else Color.Transparent)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(modePagerAfterGap(compact)))
-                }
+            Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
+        }
+        if (!state.isRecording && state.visibleModes.size > 1) {
+            ModeStrip(
+                modes = state.visibleModes,
+                selected = state.mode,
+                onModeSelected = onModeSelected
+            )
+            Spacer(Modifier.height(if (compact) 12.dp else 20.dp))
+        } else {
+            Spacer(Modifier.height(if (compact) 10.dp else 16.dp))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            GalleryThumb(file = state.thumbnail, onClick = onGalleryClicked)
+            Spacer(Modifier.weight(1f))
+            ShutterButton(
+                state = state,
+                onClick = onShutterClicked,
+                size = if (compact) 64.dp else 76.dp
+            )
+            Spacer(Modifier.weight(1f))
+            if (state.showsFlipControl) {
+                FlipButton(onClick = onFlipClicked)
+            } else {
+                Spacer(Modifier.size(48.dp))
             }
         }
-        AnimatedVisibility(
-            visible = state.showsCaptureControls,
-            enter = fadeIn(tween(280)) + expandVertically(tween(320)),
-            exit = fadeOut(tween(220)) + shrinkVertically(tween(280))
-        ) {
-            Row(
+    }
+}
+
+@Composable
+private fun ModeStrip(
+    modes: List<CameraMode>,
+    selected: CameraMode,
+    onModeSelected: (CameraMode) -> Unit
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
+        modes.forEach { mode ->
+            // Dual Photo is a Photo-header toggle, so the Photo label stays lit while it is on.
+            val isSelected = mode == selected ||
+                (selected == CameraMode.DUAL_PHOTO && mode == CameraMode.PHOTO)
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing
-                            .union(WindowInsets.systemGestures)
-                            .only(WindowInsetsSides.Horizontal)
+                    .minimumInteractiveComponentSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onModeSelected(mode) }
                     ),
-                verticalAlignment = Alignment.CenterVertically
+                contentAlignment = Alignment.Center
             ) {
-                val sideSize = if (compact) 44.dp else 48.dp
-                Spacer(Modifier.weight(1f))
-                Box(
-                    modifier = Modifier.size(sideSize),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = !state.lockCaptureMode &&
-                            !state.isRecording &&
-                            !state.panoramaActive,
-                        enter = fadeIn(tween(280)),
-                        exit = fadeOut(tween(220))
-                    ) {
-                        GalleryThumb(
-                            file = state.thumbnail,
-                            size = sideSize,
-                            onClick = onGalleryClicked
-                        )
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                ShutterButton(
-                    recordsVideo = state.recordsVideo,
-                    isRecording = state.isRecording,
-                    panoramaActive = state.panoramaActive,
-                    compact = compact,
-                    onClick = onShutterClicked
+                Text(
+                    text = stringResource(mode.labelRes).uppercase(Locale.getDefault()),
+                    color = if (isSelected) IphoneYellow else ChromeInactive,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 1.6.sp
                 )
-                Spacer(Modifier.weight(1f))
-                if (state.showsFlipControl) {
-                    GlassIconButton(
-                        icon = Icons.Filled.Cameraswitch,
-                        contentDescription = stringResource(R.string.switch_camera_button_alt),
-                        diameter = sideSize,
-                        onClick = onFlipClicked
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoomPills(
+    chips: List<Float>,
+    active: Float,
+    onZoomSelected: (Float) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.32f))
+            .padding(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        chips.forEach { ratio ->
+            val isActive = kotlin.math.abs(ratio - active) < 0.05f
+            Box(
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(if (isActive) ChromeWhite else Color.Transparent)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onZoomSelected(ratio) }
                     )
-                } else {
-                    Spacer(Modifier.size(sideSize))
-                }
-                Spacer(Modifier.weight(1f))
+                    .semantics { contentDescription = zoomDescription(ratio) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = zoomLabel(ratio),
+                    color = if (isActive) Color.Black else ChromeWhite,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }
@@ -945,51 +399,119 @@ fun CameraFooter(
 
 @Composable
 fun ShutterButton(
-    recordsVideo: Boolean,
-    isRecording: Boolean,
-    panoramaActive: Boolean = false,
-    compact: Boolean = false,
-    onClick: () -> Unit
+    state: CameraUiState,
+    onClick: () -> Unit,
+    size: Dp = 76.dp
 ) {
-    val haptic = LocalHapticFeedback.current
-    val innerScale by animateFloatAsState(
-        if (isRecording || panoramaActive) 0.42f else 0.78f,
+    val recording = state.isRecording
+    val video = state.captureAction == CaptureAction.VIDEO
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.9f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "shutterScale"
     )
-    val corner by animateFloatAsState(
-        if (isRecording || panoramaActive) 0.22f else 0.5f,
-        label = "shutterCorner"
-    )
+    val description = stringResource(R.string.shutter)
     Box(
         modifier = Modifier
-            .size(if (compact) 64.dp else 84.dp)
+            .size(size)
+            .scale(scale)
+            .clip(CircleShape)
+            .border(4.dp, ChromeWhite, CircleShape)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = false)
-            ) {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                onClick()
-            },
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick
+            )
+            .semantics { contentDescription = description },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawCircle(
-                color = Color.White.copy(alpha = 0.92f),
-                style = Stroke(width = 3.dp.toPx()),
-                radius = size.minDimension / 2f - 2.dp.toPx()
+        when {
+            recording -> Box(
+                Modifier
+                    .size(size * 0.4f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(ShutterRed)
             )
-            val inner = size.minDimension * innerScale
-            val origin = Offset((size.width - inner) / 2f, (size.height - inner) / 2f)
-            val color = when {
-                recordsVideo || isRecording -> CameraDanger
-                panoramaActive -> CameraAccent
-                else -> Color.White
-            }
-            drawRoundRect(
-                color = color,
-                topLeft = origin,
-                size = Size(inner, inner),
-                cornerRadius = CornerRadius(inner * corner, inner * corner)
+
+            video -> Box(
+                Modifier
+                    .size(size * 0.72f)
+                    .clip(CircleShape)
+                    .background(ShutterRed)
+            )
+
+            else -> Box(
+                Modifier
+                    .size(size * 0.84f)
+                    .clip(CircleShape)
+                    .background(ChromeWhite)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FlipButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .size(48.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Cameraswitch,
+            contentDescription = stringResource(R.string.switch_camera),
+            tint = ChromeWhite,
+            modifier = Modifier.size(26.dp)
+        )
+    }
+}
+
+@Composable
+private fun GalleryThumb(
+    file: File?,
+    onClick: () -> Unit
+) {
+    var model by remember(file) { mutableStateOf<Any?>(null) }
+    LaunchedEffect(file) {
+        model = withContext(Dispatchers.IO) { file?.let { mediaThumbnail(it) } }
+    }
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .size(48.dp)
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.14f))
+            .border(1.dp, Color.White.copy(alpha = 0.28f), shape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (model != null) {
+            AsyncImage(
+                model = model,
+                contentDescription = stringResource(R.string.gallery_button_alt),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.Photo,
+                contentDescription = stringResource(R.string.gallery_button_alt),
+                tint = ChromeWhite.copy(alpha = 0.6f),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -998,7 +520,7 @@ fun ShutterButton(
 @Composable
 fun RuleOfThirdsGrid() {
     Canvas(Modifier.fillMaxSize()) {
-        val color = Color.White.copy(alpha = 0.28f)
+        val color = Color.White.copy(alpha = 0.24f)
         val stroke = 1.dp.toPx()
         drawLine(color, Offset(size.width / 3f, 0f), Offset(size.width / 3f, size.height), stroke)
         drawLine(
@@ -1027,11 +549,11 @@ fun FocusRing(point: Offset?) {
         if (point == null) return@AnimatedVisibility
         Canvas(Modifier.fillMaxSize()) {
             drawRoundRect(
-                color = CameraAccent,
-                topLeft = Offset(point.x - 36.dp.toPx(), point.y - 36.dp.toPx()),
-                size = Size(72.dp.toPx(), 72.dp.toPx()),
-                cornerRadius = CornerRadius(12.dp.toPx()),
-                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                color = IphoneYellow,
+                topLeft = Offset(point.x - 34.dp.toPx(), point.y - 34.dp.toPx()),
+                size = Size(68.dp.toPx(), 68.dp.toPx()),
+                cornerRadius = CornerRadius(10.dp.toPx()),
+                style = Stroke(width = 1.5.dp.toPx())
             )
         }
     }
@@ -1043,249 +565,43 @@ fun CountdownOverlay(value: Int?) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.25f)),
+            .background(Color.Black.copy(alpha = 0.3f)),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = value.toString(),
-            color = Color.White,
-            fontFamily = CameraFontFamily,
+            color = ChromeWhite,
             fontSize = 96.sp,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Light
         )
     }
 }
 
-@Composable
-private fun GalleryThumb(
-    file: File?,
-    size: Dp,
-    onClick: () -> Unit
-) {
-    var model by remember(file) { mutableStateOf<Any?>(null) }
-    LaunchedEffect(file) {
-        model = withContext(Dispatchers.IO) {
-            file?.let { mediaThumbnail(it) }
-        }
-    }
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(CameraGlassStrong)
-            .border(1.5.dp, Color.White.copy(alpha = 0.55f), CircleShape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = true),
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        if (model != null) {
-            AsyncImage(
-                model = model,
-                contentDescription = stringResource(R.string.gallery_button_alt),
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Filled.Photo,
-                contentDescription = stringResource(R.string.gallery_button_alt),
-                tint = CameraOnGlass,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun EffectThumb(
-    effect: EffectMode,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val fill = when (effect) {
-        EffectMode.NONE -> Color.White
-        EffectMode.GRAYSCALE -> Color(0xFFBDBDBD)
-        EffectMode.INVERT -> Color(0xFF212121)
-        EffectMode.SEPIA -> Color(0xFFD7A86E)
-        EffectMode.COOL -> Color(0xFF7EC8E3)
-        EffectMode.WARM -> Color(0xFFFFB74D)
-        EffectMode.VIVID -> Color(0xFFFF5C8A)
-    }
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = ripple(bounded = false),
-            onClick = onClick
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .background(fill)
-                .then(
-                    if (selected) Modifier.border(2.dp, CameraAccent, CircleShape)
-                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                )
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = stringResource(effect.labelRes),
-            color = if (selected) CameraAccent else CameraOnGlass,
-            fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun GlassIconButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    selected: Boolean = false,
-    compact: Boolean = false,
-    embedded: Boolean = false,
-    tooltip: Boolean = false,
-    diameter: Dp? = null,
-    onGlass: Color? = null,
-    glass: Color? = null,
-    stroke: Color? = null
-) {
-    val background = when {
-        selected -> CameraAccent
-        embedded -> Color.White.copy(alpha = 0.08f)
-        else -> glass ?: CameraGlassStrong
-    }
-    val iconTint = if (selected) Color.Black else (onGlass ?: CameraOnGlass)
-    val borderColor = stroke ?: Color.White.copy(alpha = 0.14f)
-    val size = diameter ?: if (compact || embedded) 40.dp else 44.dp
-    val interactionSource = remember { MutableInteractionSource() }
-    var showTooltip by remember { mutableStateOf(false) }
-    var skipClick by remember { mutableStateOf(false) }
-    val density = LocalDensity.current
-    if (tooltip) {
-        LaunchedEffect(interactionSource) {
-            interactionSource.interactions.collectLatest { interaction ->
-                when (interaction) {
-                    is PressInteraction.Press -> {
-                        skipClick = false
-                        delay(android.view.ViewConfiguration.getLongPressTimeout().toLong())
-                        skipClick = true
-                        showTooltip = true
-                    }
-                    else -> showTooltip = false
-                }
-            }
-        }
-    }
-    Box(contentAlignment = Alignment.Center) {
-        if (!selected && !embedded) {
-            CameraGlassButton(
-                icon = icon,
-                contentDescription = contentDescription,
-                onClick = {
-                    if (!skipClick) onClick()
-                    skipClick = false
-                },
-                compact = compact,
-                diameter = diameter,
-                onGlass = onGlass,
-                glass = glass,
-                stroke = stroke,
-                interactionSource = interactionSource
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .then(if (embedded) Modifier else Modifier.minimumInteractiveComponentSize())
-                    .size(size)
-                    .clip(CircleShape)
-                    .background(background)
-                    .then(
-                        if (embedded) Modifier
-                        else Modifier.border(1.dp, borderColor, CircleShape)
-                    )
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = ripple(bounded = true),
-                        onClick = {
-                            if (!skipClick) onClick()
-                            skipClick = false
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = contentDescription,
-                    tint = iconTint,
-                    modifier = Modifier.size(
-                        if (diameter != null) 22.dp else if (compact || embedded) 18.dp else 20.dp
-                    )
-                )
-            }
-        }
-        if (tooltip && showTooltip) {
-            Popup(
-                popupPositionProvider = object : PopupPositionProvider {
-                    override fun calculatePosition(
-                        anchorBounds: IntRect,
-                        windowSize: IntSize,
-                        layoutDirection: LayoutDirection,
-                        popupContentSize: IntSize
-                    ): IntOffset {
-                        val gap = with(density) { 8.dp.roundToPx() }
-                        val margin = with(density) { 8.dp.roundToPx() }
-                        val x = (anchorBounds.left +
-                            (anchorBounds.width - popupContentSize.width) / 2)
-                            .coerceIn(
-                                margin,
-                                (windowSize.width - popupContentSize.width - margin)
-                                    .coerceAtLeast(margin)
-                            )
-                        return IntOffset(x, anchorBounds.bottom + gap)
-                    }
-                },
-                properties = PopupProperties(focusable = false, clippingEnabled = false)
-            ) {
-                Text(
-                    text = contentDescription,
-                    color = CameraOnGlass,
-                    fontFamily = CameraFontFamily,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.Black.copy(alpha = 0.88f))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                )
-            }
-        }
-    }
-}
-
-private fun flashIcon(mode: FlashMode) = when (mode) {
+private fun flashIcon(mode: FlashMode): ImageVector = when (mode) {
     FlashMode.OFF -> Icons.Filled.FlashOff
     FlashMode.ON -> Icons.Filled.FlashOn
     FlashMode.AUTO -> Icons.Filled.FlashAuto
     FlashMode.TORCH -> Icons.Filled.FlashlightOn
 }
 
-private fun timerIcon(mode: TimerMode) = when (mode) {
+private fun timerIcon(mode: TimerMode): ImageVector = when (mode) {
     TimerMode.OFF -> Icons.Filled.TimerOff
     TimerMode.THREE -> Icons.Filled.Timer3
     TimerMode.TEN -> Icons.Filled.Timer
 }
+
+/** ".5", "1", "2" — iPhone zoom pill labels (no trailing x, no leading zero). */
+private fun zoomLabel(ratio: Float): String {
+    val text = if (kotlin.math.abs(ratio - ratio.toInt()) < 0.05f) {
+        ratio.toInt().toString()
+    } else {
+        String.format(Locale.US, "%.1f", ratio)
+    }
+    return text.removePrefix("0")
+}
+
+private fun zoomDescription(ratio: Float): String =
+    String.format(Locale.US, "%.1fx", ratio)
 
 internal fun mediaThumbnail(file: File?): Any {
     if (file == null) return R.drawable.ic_photo
@@ -1298,40 +614,5 @@ internal fun mediaThumbnail(file: File?): Any {
         R.drawable.ic_camera_video
     } finally {
         retriever.release()
-    }
-}
-
-@Composable
-fun PanoramaLivePreview(state: CameraUiState) {
-    AnimatedVisibility(
-        visible = state.panoramaActive,
-        enter = fadeIn(tween(160)) + expandVertically(tween(180)),
-        exit = fadeOut(tween(120)) + shrinkVertically(tween(140))
-    ) {
-        val scrollState = rememberScrollState()
-        LaunchedEffect(state.panoramaFrames.size) {
-            scrollState.animateScrollTo(scrollState.maxValue)
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp)
-                .horizontalScroll(scrollState),
-            horizontalArrangement = Arrangement.spacedBy((-24).dp)
-        ) {
-            Spacer(modifier = Modifier.width(32.dp))
-            state.panoramaFrames.forEach { file ->
-                AsyncImage(
-                    model = file,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .height(80.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-                )
-            }
-            Spacer(modifier = Modifier.width(32.dp))
-        }
     }
 }

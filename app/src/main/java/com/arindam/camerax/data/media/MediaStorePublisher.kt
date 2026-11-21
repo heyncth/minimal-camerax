@@ -28,7 +28,7 @@ object MediaStorePublisher {
         if (shouldSkipLegacyStoragePublish(sdk, hasLegacyWritePermission(context))) {
             return Result.failure(MediaPublishException.NoStoragePermission())
         }
-        val video = file.extension.equals("mp4", ignoreCase = true)
+        val video = file.isVideoFile()
         val mime = mimeFor(file)
         val values = contentValues(file, mime, sdk)
         var lastError: Throwable? = null
@@ -106,8 +106,12 @@ private fun hasLegacyWritePermission(context: Context): Boolean =
         Manifest.permission.WRITE_EXTERNAL_STORAGE
     ) == PackageManager.PERMISSION_GRANTED
 
+private fun File.isVideoFile(): Boolean =
+    extension.equals("mp4", ignoreCase = true) || extension.equals("mov", ignoreCase = true)
+
 private fun mimeFor(file: File): String = when (file.extension.lowercase()) {
     "mp4" -> "video/mp4"
+    "mov" -> "video/quicktime"
     "heic" -> "image/heic"
     "dng" -> "image/x-adobe-dng"
     else -> "image/jpeg"

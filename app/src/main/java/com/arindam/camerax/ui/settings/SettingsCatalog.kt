@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.CropFree
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Flip
+import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.HdrAuto
 import androidx.compose.material.icons.outlined.HdrOn
 import androidx.compose.material.icons.outlined.MicOff
@@ -20,14 +21,11 @@ import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.RawOn
 import androidx.compose.material.icons.outlined.Shop
-import androidx.compose.material.icons.outlined.SlowMotionVideo
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.arindam.camerax.R
-import com.arindam.camerax.domain.model.SlowMotionOptions
 import com.arindam.camerax.domain.model.CaptureAspect
-import com.arindam.camerax.domain.model.SlowMotionRate
 import com.arindam.camerax.domain.model.VideoHdrRange
 import com.arindam.camerax.domain.model.VideoQuality
 
@@ -40,7 +38,6 @@ fun settingsSections(
     videoQualities: List<VideoQuality> = VideoQuality.entries,
     videoHdrRanges: List<VideoHdrRange> = listOf(VideoHdrRange.SDR),
     videoStabilizationAvailable: Boolean = true,
-    slowMotion: SlowMotionOptions = SlowMotionOptions(),
     ultraHdrAvailable: Boolean = false,
     rawCaptureAvailable: Boolean = false,
     fullSensorRawAvailable: Boolean = false,
@@ -89,6 +86,13 @@ fun settingsSections(
                 subtitleRes = R.string.pref_subtitle_front_mirror,
                 icon = Icons.Outlined.Flip,
                 defaultOn = true
+            ),
+            SettingsRow.Toggle(
+                keyRes = R.string.pref_key_grid,
+                titleRes = R.string.pref_title_grid,
+                subtitleRes = R.string.pref_subtitle_grid,
+                icon = Icons.Outlined.GridOn,
+                defaultOn = false
             ),
             SettingsRow.Toggle(
                 keyRes = R.string.pref_key_low_light_boost,
@@ -236,49 +240,6 @@ fun settingsSections(
         )
     ),
     SettingsSection(
-        titleRes = R.string.pref_title_slow_motion,
-        items = listOf(
-            SettingsRow.Choice(
-                keyRes = R.string.pref_key_slow_motion_quality,
-                titleRes = R.string.pref_title_slow_motion_quality,
-                subtitleRes = if (slowMotion.available) {
-                    R.string.pref_subtitle_slow_motion_quality
-                } else {
-                    R.string.slow_motion_unsupported
-                },
-                icon = Icons.Outlined.SlowMotionVideo,
-                defaultValue = slowMotion.qualities.preferredSlowMotionDefault().prefValue,
-                options = (if (slowMotion.available) {
-                    slowMotion.qualities
-                } else {
-                    VideoQuality.entries
-                }).map { quality ->
-                    SettingsChoice(quality.labelRes, quality.prefValue)
-                },
-                enabled = slowMotion.available
-            ),
-            SettingsRow.Choice(
-                keyRes = R.string.pref_key_slow_motion_fps,
-                titleRes = R.string.pref_title_slow_motion_fps,
-                subtitleRes = if (slowMotion.available) {
-                    R.string.pref_subtitle_slow_motion_fps
-                } else {
-                    R.string.slow_motion_unsupported
-                },
-                icon = Icons.Outlined.Speed,
-                defaultValue = SlowMotionRate.AUTO.prefValue,
-                options = (if (slowMotion.available) {
-                    SlowMotionRate.forFrameRates(slowMotion.frameRates)
-                } else {
-                    SlowMotionRate.entries
-                }).map { rate ->
-                    SettingsChoice(rate.labelRes, rate.prefValue)
-                },
-                enabled = slowMotion.available
-            )
-        )
-    ),
-    SettingsSection(
         titleRes = R.string.pref_title_links,
         items = listOf(
             SettingsRow.Link(
@@ -391,17 +352,3 @@ private val VideoHdrRange.labelRes: Int
 private val List<VideoHdrRange>.hasHdr: Boolean
     get() = any { it != VideoHdrRange.SDR }
 
-private fun List<VideoQuality>.preferredSlowMotionDefault(): VideoQuality =
-    firstOrNull { it == VideoQuality.FHD }
-        ?: firstOrNull { it == VideoQuality.HD }
-        ?: firstOrNull()
-        ?: VideoQuality.HD
-
-private val SlowMotionRate.labelRes: Int
-    get() = when (this) {
-        SlowMotionRate.AUTO -> R.string.pref_slow_motion_fps_auto
-        SlowMotionRate.FPS_120 -> R.string.pref_slow_motion_fps_120
-        SlowMotionRate.FPS_240 -> R.string.pref_slow_motion_fps_240
-        SlowMotionRate.FPS_480 -> R.string.pref_slow_motion_fps_480
-        SlowMotionRate.FPS_960 -> R.string.pref_slow_motion_fps_960
-    }

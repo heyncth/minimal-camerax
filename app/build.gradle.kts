@@ -160,7 +160,6 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.text.google.fonts)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
