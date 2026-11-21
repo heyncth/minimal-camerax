@@ -33,4 +33,5 @@ internal fun File.isRawCapture(): Boolean = extension.equals("dng", ignoreCase =
 internal fun File.isStillCapture(): Boolean =
     extension.equals("jpg", ignoreCase = true) ||
         extension.equals("jpeg", ignoreCase = true) ||
+        extension.equals("jpe", ignoreCase = true) ||
         extension.equals("heic", ignoreCase = true)

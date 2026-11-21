@@ -27,7 +27,7 @@ object Constants {
     /** Capture filename keys, whitelist, and extensions. */
     object FILE {
         internal const val FILE_NAME_KEY = "file_name"
-        internal val EXTENSION_WHITELIST = arrayOf("jpg", "jpeg", "heic", "dng", "mp4", "mov")
+        internal val EXTENSION_WHITELIST = arrayOf("jpg", "jpeg", "jpe", "heic", "dng", "mp4", "mov")
         internal const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         internal const val PHOTO_EXTENSION = ".jpg"
         internal const val HEIC_EXTENSION = ".heic"
