@@ -67,7 +67,9 @@ object CameraModeCatalog {
             allowsExtensions = false,
             allowsNightAuto = false,
             allowsFps60 = true,
-            allowsPersistentRecording = true
+            allowsPersistentRecording = true,
+            // Preview aspect changes with the mode (4:3 stills vs 16:9 video).
+            rebindOnEnter = true
         ),
         CameraModeProfile(
             mode = CameraMode.DUAL_PHOTO,

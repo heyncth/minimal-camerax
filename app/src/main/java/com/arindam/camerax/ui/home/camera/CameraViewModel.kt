@@ -29,6 +29,7 @@ import com.arindam.camerax.domain.model.CameraLens
 import com.arindam.camerax.domain.model.CameraMode
 import com.arindam.camerax.domain.model.CameraModeCatalog
 import com.arindam.camerax.domain.model.CaptureAction
+import com.arindam.camerax.domain.model.CaptureAspect
 import com.arindam.camerax.domain.model.CaptureSettings
 import com.arindam.camerax.domain.model.EffectMode
 import com.arindam.camerax.domain.model.ExposurePriority
@@ -205,7 +206,11 @@ class CameraViewModel(
                             },
                             effect = EffectMode.NONE,
                             cameraId = state.cameraId,
-                            captureAspect = state.captureAspect,
+                            captureAspect = if (state.mode == CameraMode.VIDEO) {
+                                CaptureAspect.RATIO_16_9
+                            } else {
+                                state.captureAspect
+                            },
                             videoQuality = state.videoQuality,
                             videoHdrRange = state.videoHdrRange,
                             slowMotion = false,

@@ -196,8 +196,16 @@ fun CameraScreen(
                 contentAlignment = Alignment.Center
             ) {
                 // Letterbox the viewfinder to the capture aspect (iPhone shows 4:3 in Photo).
-                val width = minOf(maxWidth, maxHeight * aspect)
-                val height = width / aspect
+                // PreviewView rotates the sensor stream with the display, so in portrait the
+                // on-screen box must be taller than wide (3:4 for a 4:3 sensor).
+                val boxAspect =
+                    if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                        aspect
+                    } else {
+                        1f / aspect
+                    }
+                val width = minOf(maxWidth, maxHeight * boxAspect)
+                val height = width / boxAspect
                 var viewport by remember { mutableStateOf(IntSize.Zero) }
                 Box(
                     modifier = Modifier
